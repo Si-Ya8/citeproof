@@ -1,0 +1,14 @@
+{
+  "name": "citeproof",
+  "version": "0.2.0",
+  "description": "明鉴引文 CiteProof — AI 生成参考文献逐条核验（V0.2）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED",
+  "private": true
+}

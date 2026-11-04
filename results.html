@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>核验结果 — 明鉴引文 CiteProof</title>
+<meta name="description" content="逐条核验结果与证据面板">
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2 4 6v6c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6l-8-4z'/%3E%3Cpath d='M8.5 12.5 11 15l4.5-4.5'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<header class="topbar topbar-slim">
+  <div class="topbar-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6l-8-4z"/><path d="M8.5 12.5 11 15l4.5-4.5"/></svg></span>
+      <span class="brand-text"><b>明鉴引文</b><span class="brand-en">CiteProof</span></span>
+    </a>
+    <span class="vdiv"></span>
+    <a class="crumb" href="index.html" id="btn-back"></a>
+    <div class="topbar-spacer"></div>
+    <span class="order-id" id="order-id"></span>
+    <span class="vdiv"></span>
+    <button class="btn btn-ghost btn-sm" id="btn-restart"></button>
+  </div>
+</header>
+
+<!-- ============ 固定汇总栏 ============ -->
+<div class="summary" id="summary">
+  <div class="summary-inner">
+    <div class="sum-top">
+      <div class="sum-left">
+        <p class="sum-line" id="sum-line" aria-live="polite"></p>
+      </div>
+      <div class="sum-right">
+        <div class="prog-text">已验 <b id="prog-cur">0</b> / <span id="prog-total">0</span> 条</div>
+        <div class="prog-bar"><i id="prog-fill"></i></div>
+        <div class="sum-bar-actions">
+          <button class="btn-quiet btn-sm" id="btn-rules"></button>
+          <button class="btn-quiet btn-sm" id="btn-copy-summary"></button>
+        </div>
+      </div>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="按判定筛选"></div>
+  </div>
+</div>
+
+<main class="results">
+  <!-- 正文引用与文末清单比对（上传文档时出现） -->
+  <section id="doc-compare"></section>
+
+  <!-- I-1 刷新恢复提示 -->
+  <div class="recover-tip" id="recover-tip" hidden></div>
+
+  <div class="sec-title" id="list-title"></div>
+  <section id="cards" aria-live="polite"></section>
+
+  <div class="filter-hidden-tip" id="hidden-tip"></div>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/core.js"></script>
+<script src="assets/js/results.js"></script>
+</body>
+</html>

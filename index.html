@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>明鉴引文 CiteProof — AI 生成参考文献逐条核验</title>
+<meta name="description" content="帮用 AI 写论文的人，在几分钟内把整份 AI 生成的参考文献清单逐条验完真伪，每条判定都附带可以自己核对的证据。">
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234F46E5' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 2 4 6v6c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6l-8-4z'/%3E%3Cpath d='M8.5 12.5 11 15l4.5-4.5'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- ============ 顶部产品栏 ============ -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="index.html">
+      <span class="brand-mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6l-8-4z"/><path d="M8.5 12.5 11 15l4.5-4.5"/></svg></span>
+      <span class="brand-text"><b>明鉴引文</b><span class="brand-en">CiteProof</span></span>
+    </a>
+    <div class="topbar-spacer"></div>
+    <div class="topbar-actions">
+      <button class="btn-quiet" id="btn-help"></button>
+    </div>
+  </div>
+</header>
+
+<main class="page">
+
+  <!-- ============ 首屏 ============ -->
+  <section class="hero">
+    <div class="hero-eyebrow" id="hero-eyebrow"></div>
+    <h1>把每一条 AI 引文，<br><em>逐条验明正身</em></h1>
+    <p class="hero-sub">
+      粘贴或上传参考文献清单，明鉴引文逐条比对权威文献数据库，给出「通过 / 不存在 / 张冠李戴 / DOI 错指 / 待人工确认」五类判定，
+      每条结论都附带可自行核对的证据——字段对照或检索记录，随时点开原页面复核。
+    </p>
+    <ul class="hero-points" id="hero-points"></ul>
+  </section>
+
+  <!-- ============ 核验工作台 ============ -->
+  <section class="panel" id="wb">
+    <div class="panel-tabs">
+      <div class="seg" id="seg">
+        <span class="seg-ind" id="seg-ind"></span>
+        <button data-tab="paste" class="on"></button>
+        <button data-tab="upload"></button>
+      </div>
+    </div>
+
+    <!-- 方式一：粘贴清单 -->
+    <div class="panel-body">
+      <div class="tabpane on" id="pane-paste">
+        <div class="ta-wrap">
+          <textarea id="ref-input" spellcheck="false" placeholder="把 AI 生成的参考文献清单粘贴到这里，每行一条，中英文混排均可。例如：&#10;Vaswani A, Shazeer N, Parmar N, et al. Attention is all you need[C]//NeurIPS, 2017: 5998-6008.&#10;周志华. 机器学习[M]. 北京: 清华大学出版社, 2016."></textarea>
+          <div class="ta-meta">
+            <span class="ta-count" id="ta-count">已识别 0 条</span>
+            <span class="ta-hint">支持 GB/T 7714、APA 等常见格式 · 换行分隔</span>
+          </div>
+        </div>
+        <div class="form-error" id="paste-err"></div>
+      </div>
+
+      <!-- 方式二：上传文档 -->
+      <div class="tabpane" id="pane-upload">
+        <div class="drop" id="drop" tabindex="0" role="button" aria-label="上传 docx 或 txt 文档">
+          <div class="drop-ic" id="drop-ic"></div>
+          <b>点击选择，或把文件拖到这里</b>
+          <span>上传后自动提取文末「参考文献」部分，并比对你正文里的引用标记</span>
+          <div class="drop-fmt"><span class="fmt">.docx</span><span class="fmt">.txt</span><span class="fmt">≤ 5 MB</span></div>
+          <input type="file" id="file-input" accept=".docx,.txt,text/plain" hidden>
+        </div>
+        <div class="file-card" id="file-card">
+          <div class="file-ic" id="file-ic"></div>
+          <div class="file-info"><b id="file-name"></b><span id="file-meta"></span></div>
+          <button class="file-x" id="file-remove" aria-label="移除文件"></button>
+        </div>
+        <div class="form-error" id="upload-err"></div>
+        <div class="up-extra">
+          <button class="link-btn" id="btn-sample-doc"></button>
+          <span style="font-size:12.5px;color:var(--ink-300)">没有合适的文档？下载一份示例文档体验上传核验流程</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel-foot">
+      <button class="btn btn-ghost" id="btn-sample"></button>
+      <div class="grow"></div>
+      <button class="btn btn-primary btn-lg" id="btn-start"></button>
+    </div>
+  </section>
+
+  <!-- ============ 数据来源 ============ -->
+  <section class="sources" id="sources"></section>
+
+  <div class="foot-note" id="scope-note"></div>
+
+  <footer class="site-foot">
+    <span class="brand-mini"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 6v6c0 5 3.4 8.4 8 10 4.6-1.6 8-5 8-10V6l-8-4z"/><path d="M8.5 12.5 11 15l4.5-4.5"/></svg>明鉴引文 CiteProof</span>
+    <span>校园免费发布 · 不做查重 / AIGC 检测 / 代写 · 引用核验只对题录负责</span>
+  </footer>
+</main>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/core.js"></script>
+<script src="assets/js/workbench.js"></script>
+</body>
+</html>
