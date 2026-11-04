@@ -33,10 +33,22 @@
   document.getElementById('btn-sample-doc').innerHTML = C.icon('download', 14) + '下载示例文档（.txt）';
   document.getElementById('paste-err').innerHTML = C.icon('alert-circle', 16) + '<span></span>';
 
-  var srcs = ['Crossref', 'OpenAlex', 'ACL Anthology', 'IEEE Xplore', 'CNKI 题录快照'];
+  /* 数据来源：如实区分「自动实时检索」与「人工核实入口」——
+     核验引擎实际自动检索 Crossref / OpenAlex（+ DOI 解析走 DataCite）；
+     知网 / 万方 / 百度学术无公开 API，仅作中文文献的人工核实跳转入口 */
+  var srcs = [
+    { name: 'Crossref', kind: 'auto', url: 'https://search.crossref.org/' },
+    { name: 'OpenAlex', kind: 'auto', url: 'https://openalex.org/' },
+    { name: '知网', kind: 'manual', url: 'https://search.cnki.com.cn/' },
+    { name: '万方', kind: 'manual', url: 'https://s.wanfangdata.com.cn/' },
+    { name: '百度学术', kind: 'manual', url: 'https://xueshu.baidu.com/' }
+  ];
   document.getElementById('sources').innerHTML =
     '<span class="src-label">数据来源</span>' +
-    srcs.map(function (s) { return '<span class="src-item">' + C.icon('database', 13) + s + '</span>'; }).join('');
+    srcs.map(function (s) {
+      var tag = s.kind === 'auto' ? '<span class="src-kind k-auto">实时检索</span>' : '<span class="src-kind k-manual">人工核实</span>';
+      return '<a class="src-item" href="' + s.url + '" target="_blank" rel="noopener noreferrer" title="打开' + C.esc(s.name) + '">' + C.icon('database', 13) + C.esc(s.name) + tag + '</a>';
+    }).join('');
 
   document.getElementById('scope-note').innerHTML =
     C.icon('info', 15) + '<span>明鉴引文只核验<b>参考文献题录的真实性</b>（作者、标题、来源、年份、DOI 是否对得上），不做查重、不做 AIGC 检测、不代写论文、不自动修改论文正文。核验结论以数据库登记记录为准，最终引用请以原文为准。</span>';

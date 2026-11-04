@@ -31,12 +31,14 @@ window.CP_DATA = (function () {
    * --------------------------------------------------------- */
   var RULES_HTML =
     '<div class="rule-row"><b>通过</b><p>标题、作者、来源、年份、DOI 与数据库登记记录一致：标题高度相似，引用作者中多数能在数据库作者列表中找到，年份相同，DOI 相同。</p></div>' +
-    '<div class="rule-row"><b>不存在</b><p>Crossref、OpenAlex 等多个文献库检索均无匹配记录，且 DOI 无法解析——多个库一致无果才下此判定。</p></div>' +
+    '<div class="rule-row"><b>不存在</b><p>Crossref、OpenAlex 等多个文献库检索均无匹配记录，且 DOI 无法解析——多个库一致无果才下此判定（仅适用于英文文献，见下方「中文文献规则」）。</p></div>' +
     '<div class="rule-row"><b>张冠李戴</b><p>标题与数据库记录一致，但作者或年份字段对不上——文献真实存在，引用字段写错了。</p></div>' +
     '<div class="rule-row"><b>DOI 错指</b><p>DOI 可以解析，但指向另一篇文献——DOI 与本条题录不符。</p></div>' +
     '<div class="rule-row"><b>待人工确认</b><p>检索服务暂时不可用、或字段无法自动闭合时，转为人工确认，绝不难为用户猜一个结论。</p></div>' +
     '<div class="rule-row"><b>宁漏报原则</b><p>网络异常或服务不可用时，系统不会把「查不到」误判为「不存在」，只会标为待人工确认并支持重试——核验工具自己不能制造假结论。</p></div>' +
-    '<div class="rule-row"><b>预印本豁免</b><p>arXiv 等预印本与正式发表版的年份、来源差异属正常现象，不算错误；正式版上线后以正式发表记录为准。</p></div>';
+    '<div class="rule-row"><b>预印本豁免</b><p>arXiv 等预印本与正式发表版的年份、来源差异属正常现象，不算错误；正式版上线后以正式发表记录为准。</p></div>' +
+    '<div class="rule-row"><b>中文文献规则</b><p>自动核验引擎实时检索 Crossref 与 OpenAlex，二者以英文文献为主，对中文期刊题录系统性未收录。因此中文文献在国际库查不到时<b>不会判「不存在」</b>，只标「待人工确认」并给出知网 / 万方 / 百度学术检索入口——国际库无果不代表文献不存在，请人工点开核实。</p></div>' +
+    '<div class="rule-row"><b>数据来源边界</b><p>首页标注「实时检索」的库（Crossref / OpenAlex）为引擎实际自动查询；「人工核实」的库（知网 / 万方 / 百度学术）没有公开 API，仅提供一键检索入口；标注「本地快照」的为演示数据，非实时检索。</p></div>';
 
   /* ---------------------------------------------------------
    * 查库清单（E-5）：数据库名 → 库内检索链接模板
@@ -51,6 +53,10 @@ window.CP_DATA = (function () {
     'DataCite': 'https://doi.org/{q}',
     'DataCite DOI 解析': 'https://doi.org/{q}',
     'Semantic Scholar': 'https://www.semanticscholar.org/search?q={q}',
+    /* 中文库：无公开 API，核验引擎不会自动检索，仅作人工核实入口 */
+    '知网检索': 'https://search.cnki.com.cn/Search.aspx?q={q}',
+    '万方检索': 'https://s.wanfangdata.com.cn/paper?q={q}',
+    '百度学术检索': 'https://xueshu.baidu.com/s?wd={q}',
     'CNKI 题录快照': null,
     '本地题录快照': null
   };

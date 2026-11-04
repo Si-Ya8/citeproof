@@ -247,9 +247,11 @@
   function buildQueryList(res) {
     var searches = res.searches || [];
     var rows = searches.map(function (s) {
-      var failed = s.hits === -1 || s.hits == null;
-      var cls = failed ? 'fail' : (s.hits === 0 ? 'zero' : 'hit');
-      var txt = failed ? '检索失败' : (s.hits === 0 ? '0 条结果' : s.hits + ' 条结果');
+      /* suggest=true：中文库无公开 API，未自动检索，仅作人工核实入口 */
+      var suggest = !!s.suggest;
+      var failed = suggest ? false : (s.hits === -1 || s.hits == null);
+      var cls = suggest ? 'suggest' : (failed ? 'fail' : (s.hits === 0 ? 'zero' : 'hit'));
+      var txt = suggest ? '建议人工核实' : (failed ? '检索失败' : (s.hits === 0 ? '0 条结果' : s.hits + ' 条结果'));
       var local = D.isLocalDb(s.db);
       var url = local ? null : D.dbSearchUrl(s.db, s.query);
       var link = local
@@ -266,7 +268,7 @@
     return '<div class="sr qlist">' +
       '<div class="qlist-head">' + C.icon('database', 15) + '<b>查库清单</b><span>本次实际查询的数据库、检索词与返回情况</span></div>' +
       rows + empty +
-      '<div class="sr-note">' + C.icon('search', 14) + '<span>检索词可复制后自行到对应数据库复核；点「库内检索」一键跳到该库检索页；标注「本地快照」的为演示数据，非实时检索。</span></div></div>';
+      '<div class="sr-note">' + C.icon('search', 14) + '<span>检索词可复制后自行到对应数据库复核；点「库内检索」一键跳到该库检索页；标注「本地快照」的为演示数据，非实时检索；标注「建议人工核实」的中文库没有公开接口，需人工点开核对。</span></div></div>';
   }
 
   /* E-2 待人工确认明细：不确定点 + 已查内容 + 下一步 */

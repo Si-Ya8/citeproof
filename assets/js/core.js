@@ -402,8 +402,11 @@ window.CP_CORE = (function () {
       checked: opts.checked || null,
       evidence: reason,
       searches: opts.searches || [],
-      url: cited.doi ? 'https://doi.org/' + encodeURIComponent(cited.doi)
-        : 'https://search.crossref.org/?q=' + encodeURIComponent(cited.title || cited.raw)
+      /* 中文题录跳知网检索（doi.org 对 10.3969 等中国前缀解析不通），英文走原逻辑 */
+      url: cited.lang === 'zh'
+        ? 'https://search.cnki.com.cn/Search.aspx?q=' + encodeURIComponent(cited.title || cited.raw)
+        : (cited.doi ? 'https://doi.org/' + encodeURIComponent(cited.doi)
+          : 'https://search.crossref.org/?q=' + encodeURIComponent(cited.title || cited.raw))
     };
   }
 
@@ -486,6 +489,24 @@ window.CP_CORE = (function () {
           return { preset: false, result: r, ms: 0 };
         }
         var srcNames = okSrcs.map(function (x) { return x.db; }).join(' 与 ');
+        /* 中文题录：国际库无果 ≠ 文献不存在。Crossref / OpenAlex 以英文文献为主，
+           中文期刊题录系统性未收录，宁漏报原则下降级为「待人工确认」，
+           并引导到知网 / 万方 / 百度学术核实（这三个库没有公开 API，只能人工核） */
+        if (item.lang === 'zh') {
+          return {
+            preset: false, ms: 0, result: manualResult(item,
+              '中文期刊文献：Crossref 与 OpenAlex 以英文文献为主，未检索到该题录属正常现象——国际库无果不代表文献不存在，请通过知网 / 万方 / 百度学术核实。',
+              {
+                uncertain: ['authors', 'title', 'venue', 'year'],
+                checked: '已检索 Crossref 与 OpenAlex，均无匹配记录；两个库对中文期刊收录有限，无法据此判定「不存在」。',
+                searches: searches.concat([
+                  { db: '知网检索', query: item.title, hits: null, suggest: true },
+                  { db: '万方检索', query: item.title, hits: null, suggest: true },
+                  { db: '百度学术检索', query: item.title, hits: null, suggest: true }
+                ])
+              })
+          };
+        }
         return {
           preset: false, ms: 0, result: {
             verdict: 'missing', lang: item.lang, cited: item, db: null, matched: [], mismatch: [],
@@ -551,6 +572,23 @@ window.CP_CORE = (function () {
           var r2 = resultFromRecord(best, item, best.DOI ? 'https://doi.org/' + cleanDoi(best.DOI) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), 'Crossref');
           r2.searches = searches;
           return { preset: false, result: r2, ms: 0 };
+        }
+        /* 中文题录（含中国注册机构 DOI，如 10.3969/j.issn...）：
+           国际 DOI 解析服务不收录，降级待人工确认，引导中文库核实 */
+        if (item.lang === 'zh') {
+          return {
+            preset: false, ms: 0, result: manualResult(item,
+              '中文文献：DOI ' + item.doi + ' 属于中国注册机构前缀，国际 DOI 解析服务（Crossref）未收录——解析不到不代表文献不存在，请通过知网 / 万方 / 百度学术核实。',
+              {
+                uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
+                checked: '已尝试通过 Crossref 解析 DOI 并按题录检索 OpenAlex，均未获得匹配记录；国际库对中文期刊收录有限，无法据此判定「不存在」。',
+                searches: searches.concat([
+                  { db: '知网检索', query: item.title, hits: null, suggest: true },
+                  { db: '万方检索', query: item.title, hits: null, suggest: true },
+                  { db: '百度学术检索', query: item.title, hits: null, suggest: true }
+                ])
+              })
+          };
         }
         return {
           preset: false, ms: 0, result: {
