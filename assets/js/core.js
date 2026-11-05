@@ -284,7 +284,7 @@ window.CP_CORE = (function () {
    *       ② 否则实时调用 Crossref / OpenAlex
    *       ③ 网络异常 → 待人工确认（可重试）
    * ---------------------------------------------------------------- */
-  var API_TIMEOUT = 9000;
+  var API_TIMEOUT = 12000;
 
   /* 网络层异常（超时 abort / 连接失败）才值得重试；
      HTTP 状态错误（429/403/5xx）与 404、JSON 解析失败不重试 */
@@ -292,24 +292,42 @@ window.CP_CORE = (function () {
     return !!e && (e.name === 'AbortError' || e.name === 'TypeError');
   }
 
+  function fetchOnce(url, timeoutMs) {
+    var ctrl = new AbortController();
+    var t = setTimeout(function () { ctrl.abort(); }, timeoutMs || API_TIMEOUT);
+    return fetch(url, { signal: ctrl.signal, headers: { 'Accept': 'application/json' } })
+      .then(function (r) {
+        clearTimeout(t);
+        if (r.status === 404) return null;
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .catch(function (e) { clearTimeout(t); throw e; });
+  }
+
   function fetchJson(url, timeoutMs) {
-    var ms = timeoutMs || API_TIMEOUT;
-    function attempt() {
-      var ctrl = new AbortController();
-      var t = setTimeout(function () { ctrl.abort(); }, ms);
-      return fetch(url, { signal: ctrl.signal, headers: { 'Accept': 'application/json' } })
-        .then(function (r) {
-          clearTimeout(t);
-          if (r.status === 404) return null;
-          if (!r.ok) throw new Error('HTTP ' + r.status);
-          return r.json();
-        })
-        .catch(function (e) { clearTimeout(t); throw e; });
-    }
     /* 首次失败且为网络层异常 → 间隔 1s 自动重试一次，吸收偶发波动 */
-    return attempt().catch(function (e) {
+    return fetchOnce(url, timeoutMs).catch(function (e) {
       if (!isRetryable(e)) throw e;
-      return new Promise(function (res) { setTimeout(res, 1000); }).then(attempt);
+      return new Promise(function (res) { setTimeout(res, 1000); }).then(function () { return fetchOnce(url, timeoutMs); });
+    });
+  }
+
+  /* 数据源健康探测：不重试、短超时（8s），快速返回两库连通状态。
+     供结果页/首页显示「数据源状态」灯，让用户一眼分清是库/网络问题还是文献问题 */
+  function probeSources() {
+    var key = window.CP_DATA && window.CP_DATA.OPENALEX_API_KEY;
+    var mailto = window.CP_DATA && window.CP_DATA.CONTACT_EMAIL;
+    var oaUrl = 'https://api.openalex.org/works?per-page=1&search=test' +
+      (key ? '&api_key=' + encodeURIComponent(key) : '') +
+      (mailto ? '&mailto=' + encodeURIComponent(mailto) : '');
+    return Promise.all([
+      fetchOnce('https://api.crossref.org/works?rows=1&query=test', 8000)
+        .then(function () { return 'ok'; }, function () { return 'fail'; }),
+      fetchOnce(oaUrl, 8000)
+        .then(function (j) { return (!j || j.error) ? 'fail' : 'ok'; }, function () { return 'fail'; })
+    ]).then(function (arr) {
+      return { crossref: arr[0], openalex: arr[1] };
     });
   }
 
@@ -376,8 +394,10 @@ window.CP_CORE = (function () {
 
   function openAlexSearch(query) {
     var key = window.CP_DATA && window.CP_DATA.OPENALEX_API_KEY;
+    var mailto = window.CP_DATA && window.CP_DATA.CONTACT_EMAIL;
     var u = 'https://api.openalex.org/works?per-page=5&select=id,doi,title,publication_year,authorships,primary_location&search=' +
-      encodeURIComponent(query) + (key ? '&api_key=' + encodeURIComponent(key) : '');
+      encodeURIComponent(query) + (key ? '&api_key=' + encodeURIComponent(key) : '') +
+      (mailto ? '&mailto=' + encodeURIComponent(mailto) : '');
     return fetchJson(u).then(function (j) {
       /* 服务故障 / 限额暂停时 OpenAlex 返回 {"error": ...}（HTTP 200）。
          必须按「检索失败」抛出——若当成 0 结果，双库静默变单库，
@@ -741,6 +761,7 @@ window.CP_CORE = (function () {
     formatCheck: formatCheck,
     splitRefSection: splitRefSection, parseRefEntries: parseRefEntries, extractInlineCitations: extractInlineCitations,
     jaccard: jaccard, norm: norm,
+    probeSources: probeSources,
     verifyItem: verifyItem
   };
 })();

@@ -14,6 +14,9 @@ window.CP_DATA = (function () {
      免费 key 不涉及付费、仅提升调用限额，公开可接受；若介意可改为私有部署，
      由服务端注入。留空则走匿名调用（匿名 search 集群当前官方限流，务必配置）。 */
   var OPENALEX_API_KEY = 'GKnqgsU2L5a8jgsH4qa1SU';
+  /* OpenAlex 礼貌池（Polite Pool）：官方建议请求带 mailto 参数，
+     可获得更稳定的响应与更高的限流容忍度 */
+  var CONTACT_EMAIL = '2817278273@qq.com';
 
   /* 五类判定的元数据：文字标签 + 色标 + 图标，三者同时出现 */
   var VERDICTS = {
@@ -360,6 +363,7 @@ window.CP_DATA = (function () {
     VERDICTS: VERDICTS,
     FIELD_LABELS: FIELD_LABELS,
     OPENALEX_API_KEY: OPENALEX_API_KEY,
+    CONTACT_EMAIL: CONTACT_EMAIL,
     SAMPLE: SAMPLE,
     RESULTS: RESULTS,
     RULES_HTML: RULES_HTML,

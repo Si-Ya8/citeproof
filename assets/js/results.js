@@ -24,6 +24,28 @@
     }, 600);
   }
 
+  /* 数据源健康状态：探测 Crossref / OpenAlex 连通性并显示状态灯，
+     让用户一眼分清「库/网络问题」与「文献问题」——库不可达时不影响
+     Crossref 已完成的核验，仅未覆盖条目需人工确认 */
+  function renderSrcHealth() {
+    var box = document.getElementById('src-health');
+    if (!box) return;
+    box.innerHTML = '<span class="src-dot probing"></span>数据源状态检测中…';
+    C.probeSources().then(function (s) {
+      function dot(st, name) {
+        if (st === 'ok') return '<span class="src-dot ok"></span>' + name + ' 正常';
+        return '<span class="src-dot bad"></span>' + name + ' 暂不可达';
+      }
+      var html = '<span class="src-health-label">数据源状态：</span>' +
+        dot(s.crossref, 'Crossref') + ' · ' + dot(s.openalex, 'OpenAlex');
+      if (s.openalex === 'fail') {
+        html += '<span class="src-health-note">（OpenAlex 不可达不影响 Crossref 已完成的核验；仅双库均无记录的条目会转人工确认）</span>';
+      }
+      box.innerHTML = html;
+    });
+  }
+  renderSrcHealth();
+
   /* ---------------- 本地持久化（I-1） ---------------- */
   function persistResults() {
     var arr = [];
