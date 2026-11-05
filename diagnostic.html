@@ -265,7 +265,8 @@
     v.hidden = false;
     t.textContent = title;
     b.innerHTML = html;
-    report.verdict = title;
+    /* title 自带「结论：」前缀，报告模板还会再拼一次——这里去掉前缀避免「结论：结论：」 */
+    report.verdict = title.replace(/^结论：/, '');
   }
 
   document.getElementById('btn-copy-report').disabled = true;
