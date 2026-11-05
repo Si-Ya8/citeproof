@@ -286,17 +286,31 @@ window.CP_CORE = (function () {
    * ---------------------------------------------------------------- */
   var API_TIMEOUT = 9000;
 
+  /* 网络层异常（超时 abort / 连接失败）才值得重试；
+     HTTP 状态错误（429/403/5xx）与 404、JSON 解析失败不重试 */
+  function isRetryable(e) {
+    return !!e && (e.name === 'AbortError' || e.name === 'TypeError');
+  }
+
   function fetchJson(url, timeoutMs) {
-    var ctrl = new AbortController();
-    var t = setTimeout(function () { ctrl.abort(); }, timeoutMs || API_TIMEOUT);
-    return fetch(url, { signal: ctrl.signal, headers: { 'Accept': 'application/json' } })
-      .then(function (r) {
-        clearTimeout(t);
-        if (r.status === 404) return null;
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
-      .catch(function (e) { clearTimeout(t); throw e; });
+    var ms = timeoutMs || API_TIMEOUT;
+    function attempt() {
+      var ctrl = new AbortController();
+      var t = setTimeout(function () { ctrl.abort(); }, ms);
+      return fetch(url, { signal: ctrl.signal, headers: { 'Accept': 'application/json' } })
+        .then(function (r) {
+          clearTimeout(t);
+          if (r.status === 404) return null;
+          if (!r.ok) throw new Error('HTTP ' + r.status);
+          return r.json();
+        })
+        .catch(function (e) { clearTimeout(t); throw e; });
+    }
+    /* 首次失败且为网络层异常 → 间隔 1s 自动重试一次，吸收偶发波动 */
+    return attempt().catch(function (e) {
+      if (!isRetryable(e)) throw e;
+      return new Promise(function (res) { setTimeout(res, 1000); }).then(attempt);
+    });
   }
 
   function crossrefByDoi(doi) {
@@ -562,6 +576,20 @@ window.CP_CORE = (function () {
               })
           };
         }
+        /* 有库检索失败（如 OpenAlex 限流 / 网络波动）：证据链不完整，
+           宁漏报原则下降级为待人工确认——missing 判定必须以双库一致无果为前提 */
+        var failedSrcs = arr.filter(function (x) { return !x.ok; });
+        if (failedSrcs.length) {
+          return {
+            preset: false, ms: 0, result: manualResult(item,
+              failedSrcs.map(function (x) { return x.db; }).join(' 与 ') + ' 检索服务暂时不可用（网络波动或接口限流），本条仅完成部分数据库核验——单库无匹配记录不足以判定「不存在」，已降级为待人工确认。请稍后点卡片上的「重新核验」重试，或按下方检索词人工核对。',
+              {
+                uncertain: ['authors', 'title', 'venue', 'year'],
+                checked: '已完成：' + okSrcs.map(function (x) { return x.db + ' 返回 ' + x.data.length + ' 条相近记录，标题相似度均未达匹配阈值'; }).join('；') + '。未完成：' + failedSrcs.map(function (x) { return x.db + ' 检索失败'; }).join('、') + '。',
+                searches: searches
+              })
+          };
+        }
         return {
           preset: false, ms: 0, result: {
             verdict: 'missing', lang: item.lang, cited: item, db: null, matched: [], mismatch: [],
@@ -665,6 +693,20 @@ window.CP_CORE = (function () {
                   { db: '万方检索', query: item.title, hits: null, suggest: true },
                   { db: '百度学术检索', query: item.title, hits: null, suggest: true }
                 ])
+              })
+          };
+        }
+        /* 有库检索失败（如 OpenAlex 限流 / 网络波动）：证据链不完整，
+           宁漏报原则下降级为待人工确认——missing 判定必须以双库一致无果为前提 */
+        var failedSrcs = arr.filter(function (x) { return !x.ok; });
+        if (failedSrcs.length) {
+          return {
+            preset: false, ms: 0, result: manualResult(item,
+              failedSrcs.map(function (x) { return x.db; }).join(' 与 ') + ' 检索服务暂时不可用（网络波动或接口限流），DOI 解析与部分数据库检索未完成——单库无匹配记录不足以判定「不存在」，已降级为待人工确认。请稍后点卡片上的「重新核验」重试，或按下方检索词人工核对。',
+              {
+                uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
+                checked: '已完成：DOI ' + item.doi + ' 解析未获得结果，' + okSrcs.map(function (x) { return x.db + ' 返回 ' + x.data.length + ' 条相近记录，标题相似度均未达匹配阈值'; }).join('；') + '。未完成：' + failedSrcs.map(function (x) { return x.db + ' 检索失败'; }).join('、') + '。',
+                searches: searches
               })
           };
         }
