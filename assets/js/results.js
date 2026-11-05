@@ -15,6 +15,15 @@
     openPanels: [], recovered: 0, marks: {}
   };
 
+  /* 旧版本缓存检测：data.js 未带 OpenAlex key（旧缓存 / 旧版本）时，
+     OpenAlex 只能匿名调用，大概率被官方限流——Crossref 核验不受影响，
+     但提前告知用户刷新页面，避免「OpenAlex 一直检索失败」的困惑 */
+  if (!D.OPENALEX_API_KEY) {
+    setTimeout(function () {
+      C.toast('检测到当前页面为旧版本缓存：OpenAlex 密钥未加载，OpenAlex 检索可能受限（Crossref 核验不受影响）——请刷新页面或重新打开链接后重试', 9000);
+    }, 600);
+  }
+
   /* ---------------- 本地持久化（I-1） ---------------- */
   function persistResults() {
     var arr = [];
