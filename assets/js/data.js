@@ -8,12 +8,12 @@
 window.CP_DATA = (function () {
   'use strict';
 
-  /* OpenAlex API key（免费申请：https://openalex.org/signup → Settings → API key，
-     邮件激活后即用；免费 key 将匿名限额提升 10 倍）。
+  /* OpenAlex API key（2026-11-05 由 agent 代申请并邮件激活：POST api.openalex.org/api-keys，
+     免费 key 将匿名限额提升 10 倍，日限额 $1，对本产品绰绰有余）。
      说明：本站为纯静态部署（GitHub Pages），没有服务端，key 只能放在前端代码里。
      免费 key 不涉及付费、仅提升调用限额，公开可接受；若介意可改为私有部署，
-     由服务端注入。留空则走匿名调用（当前 OpenAlex 匿名搜索受限，建议配置）。 */
-  var OPENALEX_API_KEY = '';
+     由服务端注入。留空则走匿名调用（匿名 search 集群当前官方限流，务必配置）。 */
+  var OPENALEX_API_KEY = 'GKnqgsU2L5a8jgsH4qa1SU';
 
   /* 五类判定的元数据：文字标签 + 色标 + 图标，三者同时出现 */
   var VERDICTS = {

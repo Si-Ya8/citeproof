@@ -615,16 +615,39 @@ window.CP_CORE = (function () {
           }
         };
       }
-      /* DOI 无法解析：再用题录检索兜底 */
-      return crossrefSearch(item.title || item.raw).then(function (items) {
-        var searches = [
-          { db: 'Crossref DOI 解析', query: item.doi, hits: 0 },
-          { db: 'Crossref 题录检索', query: item.title, hits: items.length }
-        ];
-        var best = null, bs = 0;
-        items.forEach(function (r2) { var s = jaccard(item.title, recTitle(r2)); if (s > bs) { bs = s; best = r2; } });
+      /* DOI 无法解析：再用题录检索兜底（Crossref + OpenAlex 双库并行，宁漏报） */
+      return Promise.all([
+        crossrefSearch(item.title || item.raw).then(function (r) { return { db: 'Crossref', ok: true, data: r }; },
+          function () { return { db: 'Crossref', ok: false }; }),
+        openAlexSearch(item.title || item.raw).then(function (r) { return { db: 'OpenAlex', ok: true, data: r }; },
+          function () { return { db: 'OpenAlex', ok: false }; })
+      ]).then(function (arr) {
+        var okSrcs = arr.filter(function (x) { return x.ok; });
+        var searches = [{ db: 'Crossref DOI 解析', query: item.doi, hits: 0 }]
+          .concat(okSrcs.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: x.data.length }; }))
+          .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1 }; }));
+        /* 两个库全部检索失败 → 待人工确认（宁漏报：绝不判不存在） */
+        if (!okSrcs.length) {
+          return {
+            preset: false, error: true,
+            result: manualResult(item,
+              'Crossref 与 OpenAlex 检索服务均暂时不可用，未能完成本条自动核验——请稍后点卡片上的「重新核验」重试，或按下方检索词人工核对。',
+              {
+                uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
+                checked: 'DOI ' + item.doi + ' 解析未获得结果，Crossref 与 OpenAlex 题录检索也未完成（网络异常或超时）。',
+                searches: searches
+              })
+          };
+        }
+        var best = null, bs = 0, bestSrc = '';
+        okSrcs.forEach(function (x) {
+          x.data.forEach(function (r2) {
+            var s = jaccard(item.title, recTitle(r2));
+            if (s > bs) { bs = s; best = r2; bestSrc = x.db; }
+          });
+        });
         if (best && bs >= 0.7) {
-          var r2 = resultFromRecord(best, item, best.DOI ? 'https://doi.org/' + cleanDoi(best.DOI) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), 'Crossref');
+          var r2 = resultFromRecord(best, item, best.DOI ? 'https://doi.org/' + cleanDoi(best.DOI) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), bestSrc);
           r2.searches = searches;
           return { preset: false, result: r2, ms: 0 };
         }
@@ -633,10 +656,10 @@ window.CP_CORE = (function () {
         if (item.lang === 'zh') {
           return {
             preset: false, ms: 0, result: manualResult(item,
-              '中文文献：DOI ' + item.doi + ' 属于中国注册机构前缀，国际 DOI 解析服务（Crossref）未收录——解析不到不代表文献不存在，请通过知网 / 万方 / 百度学术核实。',
+              '中文文献：DOI ' + item.doi + ' 未能通过国际库解析或匹配——解析不到不代表文献不存在，请通过知网 / 万方 / 百度学术核实。',
               {
                 uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
-                checked: '已尝试通过 Crossref 解析 DOI 并按题录检索 OpenAlex，均未获得匹配记录；国际库对中文期刊收录有限，无法据此判定「不存在」。',
+                checked: '已尝试通过 Crossref 解析 DOI，并按题录检索 Crossref 与 OpenAlex，均未获得匹配记录；国际库对中文期刊收录有限，无法据此判定「不存在」。',
                 searches: searches.concat([
                   { db: '知网检索', query: item.title, hits: null, suggest: true },
                   { db: '万方检索', query: item.title, hits: null, suggest: true },
@@ -648,7 +671,7 @@ window.CP_CORE = (function () {
         return {
           preset: false, ms: 0, result: {
             verdict: 'missing', lang: item.lang, cited: item, db: null, matched: [], mismatch: [],
-            evidence: 'DOI ' + item.doi + ' 无法解析，Crossref 与本地题录快照均未检索到匹配记录。',
+            evidence: 'DOI ' + item.doi + ' 无法解析，Crossref 与 OpenAlex 双库题录检索均未找到匹配记录。',
             searches: searches.concat([{ db: '本地题录快照', query: item.title, hits: 0 }]),
             url: 'https://search.crossref.org/?q=' + encodeURIComponent(item.title)
           }
