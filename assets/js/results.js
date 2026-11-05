@@ -11,7 +11,7 @@
   var state = {
     items: [], results: [], filter: 'all', running: false,
     hidden: 0, doc: null, fileName: null, source: 'paste',
-    openPanels: [], recovered: 0
+    openPanels: [], recovered: 0, marks: {}
   };
 
   /* ---------------- 本地持久化（I-1） ---------------- */
@@ -22,6 +22,28 @@
   }
   function persistUi() {
     C.store.set('ui', { filter: state.filter, open: state.openPanels });
+  }
+
+  /* ---------------- 人工结论标记（工作台闭环） ----------------
+   * 用户在知网/万方等库人工核实后，在产品内记录结论；
+   * 结论以题录文本哈希为键存本地，同一文献再现时自动带出。 */
+  function hashStr(s) {
+    var h = 0;
+    for (var i = 0; i < s.length; i++) { h = ((h << 5) - h + s.charCodeAt(i)) | 0; }
+    return 'h' + (h >>> 0).toString(36);
+  }
+  function loadMarks() {
+    var m = C.store.get('marks', null);
+    return (m && typeof m === 'object' && !Array.isArray(m)) ? m : {};
+  }
+  function saveMarks() { C.store.set('marks', state.marks); }
+  function getMark(item) { return state.marks[hashStr(item.raw)] || null; }
+  function setMark(item, status) {
+    if (!D.MARK_STATUS[status]) return;
+    var k = hashStr(item.raw);
+    if (state.marks[k] && state.marks[k].status === status) delete state.marks[k]; /* 再点一次取消 */
+    else state.marks[k] = { status: status, at: Date.now() };
+    saveMarks();
   }
   function doneCount() {
     var n = 0;
@@ -98,10 +120,25 @@
     return c;
   }
 
+  /* 人工结论标记统计（与自动判定分开报，不混入「存在问题」计数） */
+  function markCounts() {
+    var m = { confirmed: 0, notfound: 0, recheck: 0, marked: 0 };
+    for (var i = 0; i < state.items.length; i++) {
+      var mk = getMark(state.items[i]);
+      if (mk && m[mk.status] != null) { m[mk.status]++; m.marked++; }
+    }
+    return m;
+  }
+
   function summaryText() {
     var c = counts(), n = state.items.length;
-    return '本单共 ' + n + ' 条，检测到 ' + c.issue + ' 条存在问题，其中不存在 ' + c.missing +
+    var m = markCounts();
+    var t = '本单共 ' + n + ' 条，检测到 ' + c.issue + ' 条存在问题，其中不存在 ' + c.missing +
       ' 条、张冠李戴 ' + c.wrong + ' 条、DOI 错指 ' + c.doi + ' 条、待人工确认 ' + c.manual + ' 条，通过 ' + c.pass + ' 条。';
+    if (m.marked) {
+      t += '人工核实结论：已核实存在 ' + m.confirmed + ' 条、查无此文 ' + m.notfound + ' 条、待复查 ' + m.recheck + ' 条。';
+    }
+    return t;
   }
 
   function renderSummary() {
@@ -120,6 +157,20 @@
     document.getElementById('prog-cur').textContent = done;
     document.getElementById('prog-total').textContent = n;
     document.getElementById('prog-fill').style.width = (n ? (done / n * 100) : 0) + '%';
+
+    /* 人工核实结论行（有标记才出现） */
+    var m = markCounts();
+    var marksBox = document.getElementById('sum-marks');
+    if (marksBox) {
+      marksBox.innerHTML = m.marked
+        ? '<span class="sm-label">' + C.icon('check-circle', 13) + '人工核实</span>' +
+          '<span class="sm-item sm-ok">已核实存在 <b>' + m.confirmed + '</b></span>' +
+          '<span class="sm-item sm-bad">查无此文 <b>' + m.notfound + '</b></span>' +
+          '<span class="sm-item sm-warn">待复查 <b>' + m.recheck + '</b></span>' +
+          '<span class="sm-left">还有 <b>' + (n - m.marked) + '</b> 条未标记</span>'
+        : '';
+      marksBox.style.display = m.marked ? '' : 'none';
+    }
 
     var order = [
       { k: 'all', label: '全部', cls: 'c-all', num: n },
@@ -421,6 +472,40 @@
       '</div>' + head + body + foot + '</div></div>';
   }
 
+  /* 格式预检提示（本地 GB/T 7714 检查，提示而非判定） */
+  function buildFmtHtml(issues) {
+    if (!issues || !issues.length) return '';
+    var rows = issues.map(function (i) {
+      return '<div class="fmt-item fmt-' + i.level + '">' + C.icon('alert-circle', 12) + '<span>' + C.esc(i.text) + '</span></div>';
+    }).join('');
+    return '<div class="fmt-box"><span class="fmt-label">' + C.icon('clipboard', 12) + '格式预检</span>' + rows + '</div>';
+  }
+
+  /* 一键三库检索按钮组（中文题录：知网 / 万方 / 百度学术）
+     注意：浏览器对「一次点击内多个 window.open」只放行第一个，
+     因此做成三个独立按钮——每次点击都是独立用户手势，不会被拦截。 */
+  function buildSearchBtns(item) {
+    if (item.lang !== 'zh') return '';
+    var urls = D.manualSearchUrls(item);
+    if (!urls.length) return '';
+    return '<span class="search-group" title="中文文献库没有公开 API，引擎无法自动检索——点开去库里人工核实，检索词已按本条题录自动填好">' +
+      urls.map(function (x) {
+        return '<button class="btn-search" data-search-url="' + C.esc(x.url) + '" data-search-db="' + C.esc(x.label) + '">' +
+          C.icon('search', 12) + '<span>' + C.esc(x.label) + '</span></button>';
+      }).join('') + '</span>';
+  }
+
+  /* 人工结论标记按钮组 */
+  function buildMarkHtml(item) {
+    var cur = getMark(item);
+    var btns = Object.keys(D.MARK_STATUS).map(function (k) {
+      var s = D.MARK_STATUS[k];
+      var on = cur && cur.status === k ? ' on' : '';
+      return '<button class="btn-mark' + on + '" data-mark="' + k + '" title="在外部库人工核实后标记：' + s.label + '">' + C.icon(s.icon, 12) + s.short + '</button>';
+    }).join('');
+    return '<span class="mark-acts">' + btns + '</span>';
+  }
+
   /* ---------------- 结果卡片 ---------------- */
   function cardEl(item, res, idx, animate) {
     var v = D.VERDICTS[res.verdict];
@@ -432,6 +517,10 @@
     var doiTxt = item.doi ? '<span class="rc-doi">DOI ' + C.esc(item.doi) + '</span>' : '';
     var retry = res.verdict === 'manual'
       ? '<button class="btn-retry" data-retry="' + idx + '">' + C.icon('refresh', 13) + '重新核验</button>' : '';
+    var mark = getMark(item);
+    var markBadge = mark
+      ? '<span class="rc-mark mk-' + D.MARK_STATUS[mark.status].tone + '">' + C.icon(D.MARK_STATUS[mark.status].icon, 12) + D.MARK_STATUS[mark.status].short + '</span>'
+      : '';
 
     card.innerHTML =
       '<div class="rc-rail"></div>' +
@@ -440,13 +529,17 @@
       '<span class="badge b-' + v.tone + '">' + C.icon(v.icon, 13) + v.label + '</span>' +
       '<span class="rc-idx">#' + String(idx + 1).padStart(2, '0') + '</span>' +
       '<span class="rc-lang">' + (item.lang === 'zh' ? '中文' : 'EN') + '</span>' +
-      doiTxt +
+      doiTxt + markBadge +
       '</div>' +
       '<p class="rc-raw">' + C.esc(item.raw) + '</p>' +
+      buildFmtHtml(item.fmt) +
       '<p class="rc-ev ev-tone-' + v.tone + '">' + C.icon(v.icon, 15) + '<span class="trg">' + C.esc(res.evidence || '') + '</span></p>' +
       '<div class="rc-actions">' +
       '<button class="btn-ev" aria-expanded="' + (wasOpen ? 'true' : 'false') + '">' + C.icon('eye', 14) + '<span>' + (wasOpen ? '收起证据' : '查看证据') + '</span>' + C.icon('chevron-down', 14) + '</button>' +
+      buildSearchBtns(item) +
       retry +
+      '<span class="grow"></span>' +
+      buildMarkHtml(item) +
       '</div>' +
       '<div class="ev" id="ev-' + idx + '">' + buildEvidence(res) + '</div>' +
       '</div>';
@@ -462,8 +555,37 @@
       persistUi();
     };
 
+    card.querySelectorAll('[data-search-url]').forEach(function (sb) {
+      sb.onclick = function () {
+        window.open(sb.getAttribute('data-search-url'), '_blank', 'noopener');
+        C.toast('已打开' + sb.getAttribute('data-search-db') + '检索页——检索词已按本条题录填好，在库里确认后可回本页标记结论');
+      };
+    });
+
     var rb = card.querySelector('[data-retry]');
     if (rb) rb.onclick = function () { retryOne(idx, card); };
+
+    card.querySelectorAll('[data-mark]').forEach(function (b) {
+      b.onclick = function () {
+        setMark(item, b.dataset.mark);
+        var mk = getMark(item);
+        var head = card.querySelector('.rc-head');
+        var old = head.querySelector('.rc-mark');
+        if (old) old.remove();
+        if (mk) {
+          var s = D.MARK_STATUS[mk.status];
+          head.insertAdjacentHTML('beforeend',
+            '<span class="rc-mark mk-' + s.tone + '">' + C.icon(s.icon, 12) + s.short + '</span>');
+        }
+        card.querySelectorAll('[data-mark]').forEach(function (x) { x.classList.remove('on'); });
+        if (mk) {
+          var on = card.querySelector('[data-mark="' + mk.status + '"]');
+          if (on) on.classList.add('on');
+        }
+        renderSummary();
+        C.toast(mk ? '已标记：' + D.MARK_STATUS[mk.status].label + '（再点一次可取消）' : '已取消该条标记');
+      };
+    });
 
     card.querySelectorAll('[data-copy]').forEach(function (b) {
       b.onclick = function () {
@@ -541,13 +663,22 @@
       try {
         out = await C.verifyItem(state.items[i], { results: D.RESULTS });
       } catch (e) {
+        /* 兜底：核验流程整体异常时也给出可操作的检索记录，不留空证据 */
+        var it0 = state.items[i];
         out = {
           error: true,
           result: {
-            verdict: 'manual', lang: state.items[i].lang, cited: state.items[i], db: null, matched: [], mismatch: [],
+            verdict: 'manual', lang: it0.lang, cited: it0, db: null, matched: [], mismatch: [],
             uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
             checked: '核验流程异常中断，本条未能完成自动核验。',
-            evidence: '核验服务异常，未能完成本条自动核验，请重试或人工核对。', searches: [], url: null
+            evidence: '核验服务异常，未能完成本条自动核验，请重试或人工核对。',
+            searches: [{ db: 'Crossref 题录检索', query: it0.title, hits: -1 }, { db: 'OpenAlex 题录检索', query: it0.title, hits: -1 }]
+              .concat(it0.lang === 'zh' ? [
+                { db: '知网检索', query: it0.title, hits: null, suggest: true },
+                { db: '万方检索', query: it0.title, hits: null, suggest: true },
+                { db: '百度学术检索', query: it0.title, hits: null, suggest: true }
+              ] : []),
+            url: null
           }
         };
       }
@@ -587,6 +718,7 @@
     state.doc = session.doc || null;
     state.fileName = session.fileName || null;
     state.source = session.source || 'paste';
+    state.marks = loadMarks();
 
     document.getElementById('order-id').textContent = session.orderId ||
       ('CP-' + new Date(session.startedAt || Date.now()).toISOString().slice(0, 10).replace(/-/g, '') +

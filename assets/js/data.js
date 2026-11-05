@@ -8,6 +8,13 @@
 window.CP_DATA = (function () {
   'use strict';
 
+  /* OpenAlex API key（免费申请：https://openalex.org/signup → Settings → API key，
+     邮件激活后即用；免费 key 将匿名限额提升 10 倍）。
+     说明：本站为纯静态部署（GitHub Pages），没有服务端，key 只能放在前端代码里。
+     免费 key 不涉及付费、仅提升调用限额，公开可接受；若介意可改为私有部署，
+     由服务端注入。留空则走匿名调用（当前 OpenAlex 匿名搜索受限，建议配置）。 */
+  var OPENALEX_API_KEY = '';
+
   /* 五类判定的元数据：文字标签 + 色标 + 图标，三者同时出现 */
   var VERDICTS = {
     pass:   { key: 'pass',   label: '通过',       tone: 'pass',   icon: 'check-circle',
@@ -66,6 +73,27 @@ window.CP_DATA = (function () {
     return null;
   }
   function isLocalDb(db) { return /本地|快照/.test(db); }
+
+  /* ---------------------------------------------------------
+   * 工作台：中文文献一键三库检索（无公开 API 库的人工核实入口）
+   * 检索式以标题为主（召回最准），作者/期刊/年份作为兜底补充
+   * --------------------------------------------------------- */
+  var MANUAL_DBS = ['知网检索', '万方检索', '百度学术检索'];
+
+  function manualSearchUrls(item) {
+    var q = (item && item.title) || (item && item.raw) || '';
+    if (!q) return [];
+    return MANUAL_DBS.map(function (db) {
+      return { db: db, label: db.replace('检索', ''), url: dbSearchUrl(db, q) };
+    }).filter(function (x) { return x.url; });
+  }
+
+  /* 人工结论标记（工作台闭环：用户核实后在产品内记录结论） */
+  var MARK_STATUS = {
+    confirmed: { label: '已核实存在', short: '已核实', icon: 'check-circle', tone: 'ok' },
+    notfound:  { label: '人工查无此文', short: '查无此文', icon: 'x-circle', tone: 'bad' },
+    recheck:   { label: '待复查', short: '待复查', icon: 'clock', tone: 'warn' }
+  };
 
   /* ---------------------------------------------------------
    * 示例清单：20 条原始引用文本（顺序即演示顺序）
@@ -331,11 +359,14 @@ window.CP_DATA = (function () {
   return {
     VERDICTS: VERDICTS,
     FIELD_LABELS: FIELD_LABELS,
+    OPENALEX_API_KEY: OPENALEX_API_KEY,
     SAMPLE: SAMPLE,
     RESULTS: RESULTS,
     RULES_HTML: RULES_HTML,
     dbSearchUrl: dbSearchUrl,
     isLocalDb: isLocalDb,
+    manualSearchUrls: manualSearchUrls,
+    MARK_STATUS: MARK_STATUS,
     buildSampleDoc: buildSampleDoc
   };
 })();

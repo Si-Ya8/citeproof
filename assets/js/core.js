@@ -155,6 +155,49 @@ window.CP_CORE = (function () {
     return m ? m[0].replace(/\.$/, '').trim() : '';
   }
 
+  /* ---------------- 格式预检（GB/T 7714-2015 本地检查，不连库） ----------------
+   * 只做「提示」不做「判定」：发现的问题写进 item.fmt，结果页展示为待确认线索。
+   * 宁漏报原则同样适用——格式不规范不等于文献不存在，只提示用户人工留意。 */
+  var DOC_TYPE_RE = /\[(J|M|D|C|S|R|P|A|G|EB\/OL|DB\/OL|J\/OL|M\/OL|C\/OL|N\/OL|R\/OL|S\/OL)\]/i;
+
+  function formatCheck(raw) {
+    var t = String(raw || '');
+    var issues = [];
+    if (t.length < 15) {
+      issues.push({ level: 'warn', text: '条目过短，可能不是完整题录' });
+      return issues;
+    }
+    /* 1. 文献类型标识 */
+    if (!DOC_TYPE_RE.test(t)) {
+      issues.push({ level: 'warn', text: '缺少文献类型标识（如 [J] 期刊 / [D] 学位论文 / [C] 会议论文）' });
+    }
+    /* 2. 年份 */
+    if (!/(19|20)\d{2}/.test(t)) {
+      issues.push({ level: 'warn', text: '未识别到年份' });
+    }
+    /* 3. 作者段 */
+    var authors = extractAuthors(t);
+    if (!authors) {
+      issues.push({ level: 'warn', text: '未识别到作者段' });
+    } else if (!/[A-Za-z\u4e00-\u9fa5]/.test(authors)) {
+      issues.push({ level: 'warn', text: '作者段异常：几乎不含姓名文字' });
+    }
+    /* 4. 期刊条目应有 卷(期): 页码 */
+    if (/\[J\]/i.test(t) && !/\d+\s*\(\s*\S+\s*\)\s*:\s*[\d\-–]/.test(t)) {
+      issues.push({ level: 'info', text: '期刊条目未见「卷(期): 页码」结构，可能缺页码信息' });
+    }
+    /* 5. DOI 格式抽查：含 DOI 字样但后面不是合法 DOI */
+    var doiM = t.match(/DOI[::\s]*([^\s,;)\]}'"]+)/i);
+    if (doiM && !/^10\.\d{4,9}\/\S+$/.test(doiM[1].replace(/[.]+$/, ''))) {
+      issues.push({ level: 'warn', text: 'DOI 格式异常：' + doiM[1].slice(0, 40) });
+    }
+    /* 6. 页码缺失（有年份和期刊但没有任何页码形态） */
+    if (/\d+\s*\(\s*\S+\s*\)/.test(t) && !/[\d]\s*[-–]\s*[\d]/.test(t)) {
+      issues.push({ level: 'info', text: '未识别到页码范围' });
+    }
+    return issues;
+  }
+
   /* ---------------- 上传文档：文末参考文献提取 ---------------- */
   function splitRefSection(text) {
     var m = String(text).match(/(?:^|\n)\s*(参考文献|References?|REFERENCES|Bibliography|引用文献)\s*(?:\n|$)/);
@@ -315,9 +358,18 @@ window.CP_CORE = (function () {
   }
 
   function openAlexSearch(query) {
+    var key = window.CP_DATA && window.CP_DATA.OPENALEX_API_KEY;
     var u = 'https://api.openalex.org/works?per-page=5&select=id,doi,title,publication_year,authorships,primary_location&search=' +
-      encodeURIComponent(query);
-    return fetchJson(u).then(function (j) { return (j && j.results) || []; });
+      encodeURIComponent(query) + (key ? '&api_key=' + encodeURIComponent(key) : '');
+    return fetchJson(u).then(function (j) {
+      /* 服务故障 / 限额暂停时 OpenAlex 返回 {"error": ...}（HTTP 200）。
+         必须按「检索失败」抛出——若当成 0 结果，双库静默变单库，
+         英文文献可能被误判「不存在」（宁漏报原则） */
+      if (!j || j.error) {
+        throw new Error('OpenAlex unavailable: ' + ((j && (j.error.message || j.error)) || 'no response'));
+      }
+      return (j && j.results) || [];
+    });
   }
   function authorNames(rec) {
     if (!rec) return '';
@@ -618,6 +670,7 @@ window.CP_CORE = (function () {
     store: store, shareQuery: shareQuery,
     openModal: openModal, closeModal: closeModal, toast: toast,
     extractDoi: extractDoi, extractYear: extractYear, extractTitle: extractTitle, extractAuthors: extractAuthors,
+    formatCheck: formatCheck,
     splitRefSection: splitRefSection, parseRefEntries: parseRefEntries, extractInlineCitations: extractInlineCitations,
     jaccard: jaccard, norm: norm,
     verifyItem: verifyItem

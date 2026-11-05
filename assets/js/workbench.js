@@ -63,12 +63,18 @@
       '<div class="md-title">' + C.icon('info', 22) + '使用说明</div>' +
       '<p class="md-sub">明鉴引文帮你在几分钟内把整份 AI 生成的参考文献清单逐条验完真伪。打开即用，无需登录，证据全部公开可查。</p>' +
       '<div class="md-sec"><h4>三步完成核验</h4><div class="md-steps">' +
-      '<div class="md-step"><span class="md-num">1</span><div><b>粘贴或上传清单</b><p>直接粘贴 AI 生成的参考文献（每行一条，中英文混排均可），或上传 docx / txt 文档——上传后会自动提取文末参考文献部分，并比对你正文里的引用标记。</p></div></div>' +
-      '<div class="md-step"><span class="md-num">2</span><div><b>逐条核验，即时出结果</b><p>点「开始核验」后逐条进行，每条验完立即出现在列表里并更新进度，不用等整单跑完。汇总栏实时给出通过数与问题数。</p></div></div>' +
-      '<div class="md-step"><span class="md-num">3</span><div><b>点开证据，自行核对</b><p>每条结果都可以展开证据面板：通过项看字段对照卡，不存在项看检索证据卡，最后一键打开数据库原始页面复核。</p></div></div>' +
+      '<div class="md-step"><span class="md-num">1</span><div><b>粘贴或上传清单</b><p>直接粘贴 AI 生成的参考文献（每行一条，中英文混排均可），或上传 docx / txt 文档——上传后会自动提取文末参考文献部分，并比对你正文里的引用标记。粘贴的同时会自动做格式预检（GB/T 7714 规范问题即时提示）。</p></div></div>' +
+      '<div class="md-step"><span class="md-num">2</span><div><b>自动核验 + 格式预检</b><p>点「开始核验」后逐条进行：英文文献实时比对 Crossref 与 OpenAlex 双库，中英文题录都先过一遍本地格式预检（缺文献类型标识、缺年份、DOI 格式异常等）。每条验完立即出现在列表里并更新进度，不用等整单跑完。</p></div></div>' +
+      '<div class="md-step"><span class="md-num">3</span><div><b>点开证据，自行核对</b><p>每条结果都可以展开证据面板：通过项看字段对照卡。中文文献（知网/万方无公开 API，引擎无法自动检索）会标为「待人工确认」——点卡片上的「去检索」一键打开知网、万方、百度学术三个检索页（检索词已按本条题录自动填好），你在库里确认后回产品点一下「已核实 / 查无此文 / 待复查」，结论存在本机，同一条文献下次出现直接带出。</p></div></div>' +
       '</div></div>' +
       '<div class="md-sec"><h4>五类判定</h4><div class="legend">' + legend + '</div></div>' +
       '<div class="md-sec"><h4>判定规则</h4><div class="rules">' + D.RULES_HTML + '</div></div>' +
+      '<div class="md-sec"><h4>能力边界（先说清，不夸大）</h4><div class="rules">' +
+      '<div class="rule-row"><b>英文文献 · 自动核验</b><p>Crossref 与 OpenAlex 双库实时检索，标题、作者、年份、DOI 逐字段比对，双库一致无果才判「不存在」。</p></div>' +
+      '<div class="rule-row"><b>中文文献 · 辅助核实</b><p>知网、万方、百度学术均无公开 API（有反爬与登录限制），引擎无法自动检索中文期刊。因此中文文献在国际库查不到时<b>绝不判「不存在」</b>，只标「待人工确认」——产品负责把检索式准备好、把结论记录下来、把整份清单汇总好，核实动作由你一键完成。</p></div>' +
+      '<div class="rule-row"><b>格式预检 · 本地完成</b><p>GB/T 7714 格式问题（缺文献类型标识、缺年份、DOI 格式异常等）在浏览器本地检查，不依赖任何数据库——格式不对的条目会被提示，但格式问题不代表文献不存在。</p></div>' +
+      '<div class="rule-row"><b>不做的事</b><p>不做查重、不做 AIGC 检测、不代写论文、不自动修改论文正文；核验结论以数据库登记记录为准，最终引用请以原文为准。</p></div>' +
+      '</div></div>' +
       '<div class="md-sec"><h4>打开即用</h4>' +
       '<p class="md-sub" style="margin-top:0">无需登录、不限条数。参考文献清单只在你自己的浏览器里处理和保存，不上传到任何服务器；核验进度自动存在本机，刷新页面会从中断处继续，不会丢已验结果。</p></div>' +
       '<div class="md-note">' + C.icon('alert-circle', 14) + ' 明鉴引文只做引用核验：不做查重、不做 AIGC 检测、不代写论文、不自动修改论文正文。</div>'
@@ -252,7 +258,8 @@
           title: C.extractTitle(raw),
           authors: C.extractAuthors(raw),
           year: C.extractYear(raw),
-          lang: /[\u4e00-\u9fa5]/.test(raw) ? 'zh' : 'en'
+          lang: /[\u4e00-\u9fa5]/.test(raw) ? 'zh' : 'en',
+          fmt: C.formatCheck(raw)
         };
       });
     }
