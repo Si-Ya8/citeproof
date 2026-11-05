@@ -2,6 +2,7 @@
  * 明鉴引文 CiteProof — 核验结果页（含内嵌证据面板）
  * V0.2：刷新状态恢复（I-1）/ 待确认明细（E-2）/ 证据翻译（E-4）
  *       查库清单（E-5）/ 判定规则入口（E-6）
+ * V0.3：格式预检 / 三库检索 / 人工标记 / 报告导出（E-7）
  * ============================================================ */
 (function () {
   'use strict';
@@ -66,11 +67,13 @@
   document.getElementById('btn-back').innerHTML = C.icon('arrow-left', 15) + '返回工作台';
   document.getElementById('btn-restart').innerHTML = C.icon('refresh', 14) + '重新核验';
   document.getElementById('btn-copy-summary').innerHTML = C.icon('copy', 14) + '复制汇总';
+  document.getElementById('btn-export').innerHTML = C.icon('download', 14) + '导出报告';
   document.getElementById('btn-rules').innerHTML = C.icon('info', 14) + '判定规则';
   document.getElementById('btn-restart').onclick = function () {
     C.store.del('session'); C.store.del('results'); C.store.del('ui');
     location.href = 'index.html' + C.shareQuery();
   };
+  document.getElementById('btn-export').onclick = function () { exportReport(); };
   document.getElementById('btn-rules').onclick = function () {
     C.openModal(
       '<div class="md-title">' + C.icon('shield', 22) + '判定规则</div>' +
@@ -107,6 +110,166 @@
       '<p>回到核验工作台，粘贴 AI 生成的参考文献清单，或上传 docx / txt 文档，即可开始逐条核验。</p>' +
       '<a class="btn btn-primary btn-lg" href="index.html">回到核验工作台' + C.icon('arrow-right', 16) + '</a>' +
       '</div>';
+  }
+
+  /* ---------------- E-7 核验报告导出（Markdown，本地生成下载） ---------------- */
+  function pad2(n) { return String(n).length < 2 ? '0' + n : String(n); }
+  function fmtTime(ts) {
+    var d = new Date(ts || Date.now());
+    return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()) +
+      ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+  }
+  /* Markdown 表格单元格：竖线转义、换行压平 */
+  function mdCell(s) { return String(s == null ? '' : s).replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ').trim(); }
+  function cut(s, n) { s = String(s || ''); return s.length > n ? s.slice(0, n) + '…' : s; }
+
+  /* 单条明细（E-2 不确定点文案与 E-7 报告共用，避免两处漂移） */
+  var MANUAL_REASONS = {
+    authors: '作者字段未能与数据库记录比对',
+    title: '标题未能与数据库记录比对',
+    venue: '来源字段未能与数据库记录比对',
+    year: '年份未能与数据库记录比对',
+    doi: 'DOI 未能解析或未能比对'
+  };
+
+  function detailText(idx, res) {
+    var it = state.items[idx];
+    var v = D.VERDICTS[res.verdict];
+    var mk = getMark(it);
+    var L = [];
+    L.push('### ' + pad2(idx + 1) + ' · ' + v.label + '（' + (it.lang === 'zh' ? '中文' : 'EN') + '）');
+    L.push('');
+    L.push('- **题录**：' + it.raw);
+    L.push('- **判定依据**：' + (res.evidence || '—'));
+    var fmt = it.fmt || [];
+    L.push('- **格式预检**：' + (fmt.length
+      ? fmt.map(function (f) { return f.text; }).join('；')
+      : '未发现明显格式问题（本地 GB/T 7714 预检，仅供参考，不作为判定依据）'));
+    if (res.db && (res.verdict === 'pass' || res.verdict === 'wrong' || res.verdict === 'doi')) {
+      L.push('- **字段核对**（你的引用 → 数据库记录，来源：' + (res.db.source || '—') + '）：');
+      ['authors', 'title', 'venue', 'year', 'doi'].forEach(function (k) {
+        var cv = (res.cited || {})[k], dv = (res.db || {})[k];
+        var bad = (res.mismatch || []).indexOf(k) > -1;
+        L.push('  - ' + (D.FIELD_LABELS[k] || k) + '：' + (cv == null || cv === '' ? '—' : cv) +
+          ' → ' + (dv == null || dv === '' ? '—' : dv) + (bad ? '（**不一致**）' : '（一致）'));
+      });
+    }
+    if (res.verdict === 'doi' && res.doiResolvesTo) {
+      L.push('- **DOI 实际解析到**：《' + res.doiResolvesTo.title + '》，' + res.doiResolvesTo.authors +
+        '，' + res.doiResolvesTo.venue + '，' + res.doiResolvesTo.year + '（DOI: ' + res.doiResolvesTo.doi + '）');
+    }
+    if (res.verdict === 'manual') {
+      var unc = (res.uncertain && res.uncertain.length) ? res.uncertain : ['authors', 'title', 'venue', 'year', 'doi'];
+      L.push('- **不确定点**：' + unc.map(function (f) {
+        return (D.FIELD_LABELS[f] || f) + '（' + (MANUAL_REASONS[f] || '未能自动核对') + '）';
+      }).join('；'));
+      if (res.checked) L.push('- **已查内容**：' + res.checked);
+      L.push('- **下一步建议**：点卡片上的「重新核验」重试；或按下方查库清单中的检索词到数据库人工比对；中文文献可点知网 / 万方 / 百度学术按钮一键检索（检索词已自动填好）。');
+    }
+    var ss = res.searches || [];
+    if (ss.length) {
+      L.push('- **查库清单**：');
+      ss.forEach(function (s) {
+        var line = '  - ' + s.db + '：检索词「' + s.query + '」→ ' +
+          (s.suggest ? '建议人工核实（该库无公开接口）'
+            : (s.hits === -1 || s.hits == null ? '检索失败' : s.hits + ' 条结果'));
+        if (D.isLocalDb(s.db)) line += '（本地快照，非实时检索）';
+        L.push(line);
+      });
+    } else {
+      L.push('- **查库清单**：本条未产生检索记录——检索服务在发起请求前即不可用。');
+    }
+    if (res.url) L.push('- **来源页面**：' + res.url);
+    L.push('- **人工结论**：' + (mk
+      ? D.MARK_STATUS[mk.status].label + '（标记于 ' + fmtTime(mk.at) + '，在产品内记录，可随时更改）'
+      : '未标记'));
+    return L;
+  }
+
+  function docCompareText() {
+    if (!state.doc) return [];
+    var listed = state.items.length;
+    var inline = state.doc.inline || [];
+    var citedNotListed = inline.filter(function (x) { return x < 1 || x > listed; });
+    var listedNotCited = [];
+    for (var i = 1; i <= listed; i++) if (inline.indexOf(i) === -1) listedNotCited.push(i);
+    var L = ['## 三、正文引用与文末清单比对', '',
+      '文档：' + (state.fileName || '上传文档') + '；正文引用标记 ' + inline.length + ' 处，文末清单 ' + listed + ' 条。', ''];
+    if (!citedNotListed.length && !listedNotCited.length) {
+      L.push('正文引用与文末清单完全一致，未发现「引了没列」或「列了没引」。');
+    } else {
+      L.push('- **引了没列**（' + citedNotListed.length + ' 处）：' + (citedNotListed.length
+        ? citedNotListed.map(function (x) { return '[' + x + ']'; }).join('、') + '——正文出现该引用标记，但文末参考文献清单中没有对应条目。'
+        : '无'));
+      L.push('- **列了没引**（' + listedNotCited.length + ' 条）：' + (listedNotCited.length
+        ? listedNotCited.map(function (x) {
+            return '[' + x + '] ' + cut(state.items[x - 1] ? state.items[x - 1].raw : '', 40);
+          }).join('；')
+        : '无'));
+    }
+    return L;
+  }
+
+  function boundaryText() {
+    return [
+      '## ' + (state.doc ? '四' : '三') + '、能力边界与使用说明', '',
+      '1. **英文文献**：引擎实时检索 Crossref 与 OpenAlex 双库，字段一致判「通过」，多库一致无果才判「不存在」；',
+      '2. **中文文献**：国际文献库对中文期刊题录系统性未收录，国际库查不到时**不会判「不存在」**，只标「待人工确认」，并提供知网 / 万方 / 百度学术一键检索入口，请人工核实后回产品标记结论；',
+      '3. **宁漏报原则**：检索服务不可用时不把「查不到」当「不存在」，一律转「待人工确认」；',
+      '4. 标注「本地快照」的为演示数据，非实时检索；格式预检按 GB/T 7714 本地规则执行，仅供参考，不作为判定依据；',
+      '5. 核验结论以数据库登记记录为准，最终引用请以原文为准；',
+      '6. 本报告由浏览器本地生成，核验数据仅存储于本机，不会上传。'
+    ];
+  }
+
+  function reportText() {
+    var c = counts(), n = state.items.length, done = doneCount();
+    var m = markCounts();
+    var L = [];
+    L.push('# 明鉴引文 CiteProof · 核验报告', '');
+    L.push('- 核验单号：' + (document.getElementById('order-id').textContent || '—'));
+    L.push('- 导出时间：' + fmtTime());
+    L.push('- 核验方式：' + (state.doc
+      ? '上传文档' + (state.fileName ? '（' + state.fileName + '）' : '')
+      : '粘贴文献清单'));
+    L.push('- 核验状态：' + (done === n
+      ? '已完成（' + done + ' / ' + n + ' 条）'
+      : '进行中（已验 ' + done + ' / ' + n + ' 条，本报告仅含已验条目）'));
+    L.push('', '## 一、结论汇总', '', summaryText(), '');
+    L.push(m.marked
+      ? '人工核实：共标记 ' + m.marked + ' 条（已核实存在 ' + m.confirmed + '、查无此文 ' + m.notfound + '、待复查 ' + m.recheck + '），还有 ' + (n - m.marked) + ' 条未标记。'
+      : '人工核实：本单尚未做任何人工结论标记。');
+    L.push('', '| # | 判定 | 语种 | 人工结论 | 题录 |', '|---|------|------|----------|------|');
+    for (var i = 0; i < n; i++) {
+      var r = state.results[i];
+      if (!r) continue;
+      var mk = getMark(state.items[i]);
+      L.push('| ' + pad2(i + 1) + ' | ' + D.VERDICTS[r.result.verdict].label + ' | ' +
+        (state.items[i].lang === 'zh' ? '中文' : 'EN') + ' | ' +
+        (mk ? D.MARK_STATUS[mk.status].label : '—') + ' | ' + mdCell(cut(state.items[i].raw, 50)) + ' |');
+    }
+    L.push('', '## 二、逐条明细', '');
+    for (var j = 0; j < n; j++) {
+      if (!state.results[j]) continue;
+      L.push(detailText(j, state.results[j].result).join('\n'), '');
+    }
+    var doc = docCompareText();
+    if (doc.length) L.push(doc.join('\n'), '');
+    L.push(boundaryText().join('\n'));
+    return L;
+  }
+
+  function exportReport() {
+    var done = doneCount(), n = state.items.length;
+    var text = reportText().join('\n') + '\n';
+    var blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '核验报告_' + (document.getElementById('order-id').textContent || 'CP') + '.md';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    C.toast(done === n ? '核验报告已导出（Markdown 格式）' : '报告已导出——核验尚未完成，仅含已验 ' + done + ' 条', done === n ? '' : 'warn');
   }
 
   /* ---------------- 汇总栏 ---------------- */
@@ -325,15 +488,8 @@
   /* E-2 待人工确认明细：不确定点 + 已查内容 + 下一步 */
   function buildManualDetail(res) {
     var unc = (res.uncertain && res.uncertain.length) ? res.uncertain : ['authors', 'title', 'venue', 'year', 'doi'];
-    var reasons = {
-      authors: '作者字段未能与数据库记录比对',
-      title: '标题未能与数据库记录比对',
-      venue: '来源字段未能与数据库记录比对',
-      year: '年份未能与数据库记录比对',
-      doi: 'DOI 未能解析或未能比对'
-    };
     var rows = unc.map(function (f) {
-      return '<div class="mu-row"><span class="mu-f">' + (D.FIELD_LABELS[f] || f) + '</span><span class="mu-r">' + (reasons[f] || '未能自动核对') + '</span></div>';
+      return '<div class="mu-row"><span class="mu-f">' + (D.FIELD_LABELS[f] || f) + '</span><span class="mu-r">' + (MANUAL_REASONS[f] || '未能自动核对') + '</span></div>';
     }).join('');
     var checked = res.checked
       ? '<div class="mu-checked">' + C.icon('search', 14) + '<span>' + C.esc(res.checked) + '</span></div>'

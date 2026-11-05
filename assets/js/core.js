@@ -103,7 +103,10 @@ window.CP_CORE = (function () {
     document.body.classList.add('no-scroll');
     requestAnimationFrame(function () { wrap.classList.add('in'); });
     wrap.addEventListener('click', function (e) {
-      if (e.target.dataset && e.target.dataset.close) closeModal();
+      /* 用 closest 而非 e.target.dataset：关闭按钮内是 SVG 图标，
+         点击图标时 e.target 落在 svg 上，直接查 dataset.close 会失效 */
+      var t = e.target && e.target.closest ? e.target.closest('[data-close]') : null;
+      if (t && wrap.contains(t)) closeModal();
     });
     document.addEventListener('keydown', onEsc);
     function onEsc(e) { if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', onEsc); } }
