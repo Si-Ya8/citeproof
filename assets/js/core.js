@@ -142,18 +142,36 @@ window.CP_CORE = (function () {
   function extractTitle(text) {
     var t = String(text).replace(/^\s*\[[\d\s,\-]+\]\s*/, '');
     var m = t.match(/[\[\u3010]([JMDCRS]|EB\/OL|DB\/OL|J\/OL|M\/OL|C\/OL|N\/OL|R\/OL|S\/OL)[\/\]]/i);
-    if (m) t = t.slice(0, m.index);
-    else {
+    if (m) {
+      t = t.slice(0, m.index);
+      t = t.replace(/^[^.]+\.\s*/, '');           // GB/T：标记前还有句首作者段，去掉
+    } else {
       var d = t.indexOf('//');
       if (d > 0) t = t.slice(0, d);
+      /* APA 格式（作者. (年份). 标题. 期刊, 卷(期): 页码.）：
+         无 [J] 类标记时，若识别到 (YYYY). 模式，标题取其后到下一个句号的片段。
+         GB/T 的「去掉首个句号前片段」在 APA 多作者场景砍不干净——
+         首个句号落在「Smith, J.」处，导致后面整段题录被当作标题送进检索 */
+      var apa = t.match(/\((\d{4}[a-z]?)\)\.\s*/);
+      if (apa) {
+        var seg = t.slice(apa.index + apa[0].length).replace(/\.\*/g, '. *'); /* "robots.*IEEE" 也按句末切 */
+        t = seg.split(/\.\s+/)[0];
+      } else {
+        t = t.replace(/^[^.]+\.\s*/, '');           // 去掉作者段
+      }
     }
-    t = t.replace(/^[^.]+\.\s*/, '');           // 去掉作者段
     t = t.replace(/[[\]]/g, ' ').replace(/\.\s*$/, '').replace(/\s+/g, ' ').trim();
+    /* 剥掉 Markdown 斜体/粗体符号：真实标题不含 *，
+       且 * 会让 OpenAlex 检索直接 400（Invalid query parameters error） */
+    t = t.replace(/\*+/g, '').replace(/\s+/g, ' ').trim();
     return t.length > 300 ? t.slice(0, 300) : t;
   }
 
   function extractAuthors(text) {
     var t = String(text).replace(/^\s*\[[\d\s,\-]+\]\s*/, '');
+    /* APA 格式：完整作者段止于 (年份)，不能按首个句号切（会只剩第一个作者） */
+    var apa = t.match(/\((\d{4}[a-z]?)\)/);
+    if (apa) return t.slice(0, apa.index).replace(/[\s,]+$/, '').trim();
     var m = t.match(/^[^.]+\./);
     return m ? m[0].replace(/\.$/, '').trim() : '';
   }
@@ -370,9 +388,21 @@ window.CP_CORE = (function () {
       .then(function (j) { return j && j.message ? j.message : null; });
   }
 
+  /* 检索词净化：OpenAlex 的 search 参数把 * | 当检索语法（通配符 / OR 运算符），
+     查询串含这些字符会直接返回 HTTP 400「Invalid query parameters error」。
+     用户粘贴的文献常带 Markdown 斜体符号（如 *IEEE Sensors Journal*、*24*），
+     必须剥掉再发请求——对模糊题录检索无损失。
+     Crossref 虽容忍这些字符，一并净化以保证两库检索词一致、行为可预期。 */
+  function sanitizeQuery(q) {
+    return String(q == null ? '' : q)
+      .replace(/[\*\|]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   function crossrefSearch(query) {
     var u = 'https://api.crossref.org/works?rows=5&select=DOI,title,author,container-title,issued,type&query.bibliographic=' +
-      encodeURIComponent(query);
+      encodeURIComponent(sanitizeQuery(query));
     return fetchJson(u).then(function (j) {
       return (j && j.message && j.message.items) || [];
     });
@@ -410,7 +440,7 @@ window.CP_CORE = (function () {
   /* Semantic Scholar：补充 Crossref/OpenAlex 未覆盖的计算机文献 */
   function semanticScholarSearch(query) {
     var u = 'https://api.semanticscholar.org/graph/v1/paper/search?limit=5&fields=title,year,authors,externalIds,venue' +
-      '&query=' + encodeURIComponent(query);
+      '&query=' + encodeURIComponent(sanitizeQuery(query));
     return fetchJson(u).then(function (j) {
       return (j && j.data || []).map(function (p) {
         return {
@@ -430,7 +460,7 @@ window.CP_CORE = (function () {
     var key = window.CP_DATA && window.CP_DATA.OPENALEX_API_KEY;
     var mailto = window.CP_DATA && window.CP_DATA.CONTACT_EMAIL;
     var u = 'https://api.openalex.org/works?per-page=5&select=id,doi,title,publication_year,authorships,primary_location&search=' +
-      encodeURIComponent(query) + (key ? '&api_key=' + encodeURIComponent(key) : '') +
+      encodeURIComponent(sanitizeQuery(query)) + (key ? '&api_key=' + encodeURIComponent(key) : '') +
       (mailto ? '&mailto=' + encodeURIComponent(mailto) : '');
     return fetchJson(u).then(function (j) {
       /* 服务故障 / 限额暂停时 OpenAlex 返回 {"error": ...}（HTTP 200）。
@@ -792,6 +822,7 @@ window.CP_CORE = (function () {
     store: store, shareQuery: shareQuery,
     openModal: openModal, closeModal: closeModal, toast: toast,
     extractDoi: extractDoi, extractYear: extractYear, extractTitle: extractTitle, extractAuthors: extractAuthors,
+    sanitizeQuery: sanitizeQuery,
     formatCheck: formatCheck,
     splitRefSection: splitRefSection, parseRefEntries: parseRefEntries, extractInlineCitations: extractInlineCitations,
     jaccard: jaccard, norm: norm,
