@@ -261,6 +261,31 @@ window.CP_CORE = (function () {
     return entries.map(function (t) { return t.replace(/\s+/g, ' ').trim(); });
   }
 
+  /* ---------------- 中文文献库检索词净化：只保留标题 ----------------
+     动机（用户实测反馈）：知网 / 万方 / 百度学术对「李子康, 徐桂芝, 郭苗苗.
+     视听融合导盲机器人的设计与研究」这类带作者前缀的检索词经常 0 结果，
+     而纯标题「视听融合导盲机器人的设计与研究」正常命中——中文库只认标题。
+     extractTitle 已处理标准 GB/T 格式；本函数兜底处理非标准变体
+     （作者段无标记、全角句点等漏剥场景），对已干净的标题无副作用。 */
+  function zhSearchQuery(item) {
+    var q = String((item && (item.title || item.raw)) || '').trim();
+    if (!q) return '';
+    /* 1. 去文献类型标记：[J] [M] [EB/OL] [D] 等（半角 / 全角方括号） */
+    q = q.replace(/[\[\u3010]\s*(?:[A-Za-z]{1,5}(?:\/[A-Za-z]{1,5})?)\s*[\]\u3011]/g, ' ');
+    /* 2. 仍含「作者段. 标题」结构时剥到最后一个句号后：
+          中文标题几乎不含句号，而作者段几乎必含逗号 / 「等」——该特征稳定；
+          标题以数字开头（如「3.0 导盲技术」）时首段过短且无逗号，不会误剥 */
+    var parts = q.split(/[.\u3002\uFF0E]/).map(function (s) { return s.trim(); }).filter(Boolean);
+    if (parts.length > 1) {
+      var head = parts[0];
+      if (head.length <= 60 && /[,\uFF0C\u3001;\uFF1B]|\u7b49\s*$/.test(head)) q = parts[parts.length - 1];
+    }
+    /* 3. 清理首尾杂符与连续空白 */
+    q = q.replace(/^[\s,\uFF0C;\uFF1B:\uFF1A\u3001|]+/, '').replace(/[\s,\uFF0C;\uFF1B:\uFF1A\u3001|]+$/, '')
+      .replace(/\s+/g, ' ').trim();
+    return q.length > 120 ? q.slice(0, 120) : q;
+  }
+
   /* ---------------- 字符串相似度 ---------------- */
   function norm(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -573,9 +598,10 @@ window.CP_CORE = (function () {
       evidence: reason,
       searches: opts.searches || [],
       /* 中文题录跳知网检索（kns.cnki.net 为知网官方检索入口；doi.org 对 10.3969
-         等中国前缀解析不通），英文走 Crossref 检索页 */
+         等中国前缀解析不通），英文走 Crossref 检索页。
+         检索词统一走 zhSearchQuery 净化——中文库只认标题，带作者前缀常搜不到 */
       url: cited.lang === 'zh'
-        ? ((window.CP_DATA && window.CP_DATA.CNKI_SEARCH_URL) || 'https://kns.cnki.net/kns8/defaultresult/index?kw={q}').replace('{q}', encodeURIComponent(cited.title || cited.raw))
+        ? ((window.CP_DATA && window.CP_DATA.CNKI_SEARCH_URL) || 'https://kns.cnki.net/kns8/defaultresult/index?kw={q}').replace('{q}', encodeURIComponent(zhSearchQuery(cited)))
         : (cited.doi ? 'https://doi.org/' + encodeURIComponent(cited.doi)
           : crossrefSearchUrl(cited.title || cited.raw))
     };
@@ -700,9 +726,9 @@ window.CP_CORE = (function () {
                 uncertain: ['authors', 'title', 'venue', 'year'],
                 checked: '已检索 Crossref 与 OpenAlex，均无匹配记录；两个库对中文期刊收录有限，无法据此判定「不存在」。',
                 searches: searches.concat([
-                  { db: '知网检索', query: item.title, hits: null, suggest: true },
-                  { db: '万方检索', query: item.title, hits: null, suggest: true },
-                  { db: '百度学术检索', query: item.title, hits: null, suggest: true }
+                  { db: '知网检索', query: zhSearchQuery(item), hits: null, suggest: true },
+                  { db: '万方检索', query: zhSearchQuery(item), hits: null, suggest: true },
+                  { db: '百度学术检索', query: zhSearchQuery(item), hits: null, suggest: true }
                 ])
               })
           };
@@ -820,9 +846,9 @@ window.CP_CORE = (function () {
                 uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
                 checked: '已尝试通过 Crossref 解析 DOI，并按题录检索 Crossref 与 OpenAlex，均未获得匹配记录；国际库对中文期刊收录有限，无法据此判定「不存在」。',
                 searches: searches.concat([
-                  { db: '知网检索', query: item.title, hits: null, suggest: true },
-                  { db: '万方检索', query: item.title, hits: null, suggest: true },
-                  { db: '百度学术检索', query: item.title, hits: null, suggest: true }
+                  { db: '知网检索', query: zhSearchQuery(item), hits: null, suggest: true },
+                  { db: '万方检索', query: zhSearchQuery(item), hits: null, suggest: true },
+                  { db: '百度学术检索', query: zhSearchQuery(item), hits: null, suggest: true }
                 ])
               })
           };
@@ -871,7 +897,7 @@ window.CP_CORE = (function () {
     extractDoi: extractDoi, extractYear: extractYear, extractTitle: extractTitle, extractAuthors: extractAuthors,
     sanitizeQuery: sanitizeQuery,
     formatCheck: formatCheck,
-    splitRefSection: splitRefSection, parseRefEntries: parseRefEntries,
+    splitRefSection: splitRefSection, parseRefEntries: parseRefEntries, zhSearchQuery: zhSearchQuery,
     jaccard: jaccard, norm: norm,
     authorLinked: authorLinked, liveScore: liveScore,
     crossrefSearchUrl: crossrefSearchUrl,

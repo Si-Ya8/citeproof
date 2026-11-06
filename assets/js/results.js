@@ -194,7 +194,7 @@
         return (D.FIELD_LABELS[f] || f) + '（' + (MANUAL_REASONS[f] || '未能自动核对') + '）';
       }).join('；'));
       if (res.checked) L.push('- **已查内容**：' + res.checked);
-      L.push('- **下一步建议**：点卡片上的「重新核验」重试；或按下方查库清单中的检索词到数据库人工比对；中文文献可点知网 / 万方 / 百度学术按钮一键检索（检索词已自动填好）。');
+      L.push('- **下一步建议**：点卡片上的「重新核验」重试；或展开证据面板的「查库清单」，复制检索词、或点每行「库内检索」一键跳到对应数据库（检索词已按标题自动填好）。');
     }
     var ss = res.searches || [];
     if (ss.length) {
@@ -220,7 +220,7 @@
     return [
       '## 三、能力边界与使用说明', '',
       '1. **英文文献**：引擎实时检索 Crossref 与 OpenAlex 双库，字段一致判「通过」，多库一致无果才判「不存在」；',
-      '2. **中文文献**：国际文献库对中文期刊题录系统性未收录，国际库查不到时**不会判「不存在」**，只标「待人工确认」，并提供知网 / 万方 / 百度学术一键检索入口，请人工核实后回产品标记结论；',
+      '2. **中文文献**：国际文献库对中文期刊题录系统性未收录，国际库查不到时**不会判「不存在」**，只标「待人工确认」，并在证据面板的查库清单中提供知网 / 万方 / 百度学术一键检索入口（检索词只取标题），请人工核实后回产品标记结论；',
       '3. **宁漏报原则**：检索服务不可用时不把「查不到」当「不存在」，一律转「待人工确认」；',
       '4. 标注「本地快照」的为演示数据，非实时检索；格式预检按 GB/T 7714 本地规则执行，仅供参考，不作为判定依据；',
       '5. 核验结论以数据库登记记录为准，最终引用请以原文为准；',
@@ -465,7 +465,7 @@
     return '<div class="manual-box">' +
       '<div class="mu-sec"><h5>' + C.icon('alert-circle', 14) + '不确定点</h5><div class="mu-rows">' + rows + '</div></div>' +
       (checked ? '<div class="mu-sec"><h5>' + C.icon('database', 14) + '已查内容</h5>' + checked + '</div>' : '') +
-      '<div class="mu-sec"><h5>' + C.icon('info', 14) + '下一步建议</h5><div class="mu-next">点卡片上的「重新核验」重试；或复制下方查库清单中的检索词，到数据库自行比对；也可以点「打开原页面」在来源库中检索确认。</div></div>' +
+      '<div class="mu-sec"><h5>' + C.icon('info', 14) + '下一步建议</h5><div class="mu-next">点卡片上的「重新核验」重试；或展开下方「查库清单」，复制检索词、点每行「库内检索」一键跳到对应数据库（检索词已按标题自动填好，中文库只认标题）；核实后回上方标记人工结论。</div></div>' +
       '</div>';
   }
 
@@ -605,20 +605,6 @@
     return '<div class="fmt-box"><span class="fmt-label">' + C.icon('clipboard', 12) + '格式预检</span>' + rows + '</div>';
   }
 
-  /* 一键三库检索按钮组（中文题录：知网 / 万方 / 百度学术）
-     注意：浏览器对「一次点击内多个 window.open」只放行第一个，
-     因此做成三个独立按钮——每次点击都是独立用户手势，不会被拦截。 */
-  function buildSearchBtns(item) {
-    if (item.lang !== 'zh') return '';
-    var urls = D.manualSearchUrls(item);
-    if (!urls.length) return '';
-    return '<span class="search-group" title="中文文献库没有公开 API，引擎无法自动检索——点开去库里人工核实，检索词已按本条题录自动填好">' +
-      urls.map(function (x) {
-        return '<button class="btn-search" data-search-url="' + C.esc(x.url) + '" data-search-db="' + C.esc(x.label) + '">' +
-          C.icon('search', 12) + '<span>' + C.esc(x.label) + '</span></button>';
-      }).join('') + '</span>';
-  }
-
   /* 人工结论标记按钮组 */
   function buildMarkHtml(item) {
     var cur = getMark(item);
@@ -660,7 +646,6 @@
       '<p class="rc-ev ev-tone-' + v.tone + '">' + C.icon(v.icon, 15) + '<span class="trg">' + C.esc(res.evidence || '') + '</span></p>' +
       '<div class="rc-actions">' +
       '<button class="btn-ev" aria-expanded="' + (wasOpen ? 'true' : 'false') + '">' + C.icon('eye', 14) + '<span>' + (wasOpen ? '收起证据' : '查看证据') + '</span>' + C.icon('chevron-down', 14) + '</button>' +
-      buildSearchBtns(item) +
       retry +
       '<span class="grow"></span>' +
       buildMarkHtml(item) +
@@ -678,13 +663,6 @@
       if (!open && k > -1) state.openPanels.splice(k, 1);
       persistUi();
     };
-
-    card.querySelectorAll('[data-search-url]').forEach(function (sb) {
-      sb.onclick = function () {
-        window.open(sb.getAttribute('data-search-url'), '_blank', 'noopener');
-        C.toast('已打开' + sb.getAttribute('data-search-db') + '检索页——检索词已按本条题录填好，在库里确认后可回本页标记结论');
-      };
-    });
 
     var rb = card.querySelector('[data-retry]');
     if (rb) rb.onclick = function () { retryOne(idx, card); };
@@ -798,9 +776,9 @@
             evidence: '核验服务异常，未能完成本条自动核验，请重试或人工核对。',
             searches: [{ db: 'Crossref 题录检索', query: it0.title, hits: -1 }, { db: 'OpenAlex 题录检索', query: it0.title, hits: -1 }]
               .concat(it0.lang === 'zh' ? [
-                { db: '知网检索', query: it0.title, hits: null, suggest: true },
-                { db: '万方检索', query: it0.title, hits: null, suggest: true },
-                { db: '百度学术检索', query: it0.title, hits: null, suggest: true }
+                { db: '知网检索', query: C.zhSearchQuery(it0), hits: null, suggest: true },
+                { db: '万方检索', query: C.zhSearchQuery(it0), hits: null, suggest: true },
+                { db: '百度学术检索', query: C.zhSearchQuery(it0), hits: null, suggest: true }
               ] : []),
             url: null
           }

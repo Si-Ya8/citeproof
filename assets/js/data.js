@@ -19,7 +19,7 @@ window.CP_DATA = (function () {
   var CONTACT_EMAIL = '2817278273@qq.com';
   /* 产品版本号：诊断页与旧版本缓存检测共用。
      升级时同步 +1，线上版本可通过 https://si-ya8.github.io/citeproof/diagnostic.html 核对 */
-  var CP_VERSION = 'v0.3.13';
+  var CP_VERSION = 'v0.3.14';
 
   /* 五类判定的元数据：文字标签 + 色标 + 图标，三者同时出现 */
   var VERDICTS = {
@@ -108,8 +108,14 @@ window.CP_DATA = (function () {
    * --------------------------------------------------------- */
   var MANUAL_DBS = ['知网检索', '万方检索', '百度学术检索'];
 
+  /* 中文三库一键检索的 URL 列表。
+     检索词走 core.js 的 zhSearchQuery 净化（只留标题）——中文库对带作者
+     前缀的检索词经常 0 结果（用户实测），纯标题才稳定命中。
+     CP_CORE 未就绪时退回 item.title（理论上的加载竞态，实际函数调用时已加载完）。 */
   function manualSearchUrls(item) {
-    var q = (item && item.title) || (item && item.raw) || '';
+    var q = (window.CP_CORE && window.CP_CORE.zhSearchQuery)
+      ? window.CP_CORE.zhSearchQuery(item)
+      : ((item && item.title) || (item && item.raw) || '');
     if (!q) return [];
     return MANUAL_DBS.map(function (db) {
       return { db: db, label: db.replace('检索', ''), url: dbSearchUrl(db, q) };
