@@ -505,10 +505,14 @@ window.CP_CORE = (function () {
   function cleanDoi(d) {
     return d ? String(d).replace(/^https?:\/\/(dx\.)?doi\.org\//i, '') : '';
   }
+  /* 统一读取记录的 DOI：Crossref 用大写 DOI，OpenAlex 用小写 doi */
+  function recDoi(rec) {
+    return rec ? (rec.DOI || rec.doi) : '';
+  }
   function resultFromRecord(rec, cited, url, source) {
     var db = {
       source: source, authors: authorNames(rec), title: recTitle(rec),
-      venue: recVenue(rec), year: recYear(rec), doi: cleanDoi(rec.DOI) || (cited && cited.doi) || '—'
+      venue: recVenue(rec), year: recYear(rec), doi: cleanDoi(recDoi(rec)) || (cited && cited.doi) || '—'
     };
     var matched = [], mismatch = [];
     var titleOk = jaccard(cited.title, db.title) > 0.72;
@@ -666,7 +670,7 @@ window.CP_CORE = (function () {
         var searches = okSrcs.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: x.data.length }; })
           .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1, err: errText(x.err) }; }));
         if (best && bestScore > 0) {
-          var r = resultFromRecord(best, item, best.DOI ? 'https://doi.org/' + cleanDoi(best.DOI) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), src);
+          var r = resultFromRecord(best, item, recDoi(best) ? 'https://doi.org/' + cleanDoi(recDoi(best)) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), src);
           r.searches = searches;
           return { preset: false, result: r, ms: 0 };
         }
@@ -788,7 +792,7 @@ window.CP_CORE = (function () {
           });
         });
         if (best && bs > 0) {
-          var r2 = resultFromRecord(best, item, best.DOI ? 'https://doi.org/' + cleanDoi(best.DOI) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), bestSrc);
+          var r2 = resultFromRecord(best, item, recDoi(best) ? 'https://doi.org/' + cleanDoi(recDoi(best)) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), bestSrc);
           r2.searches = searches;
           return { preset: false, result: r2, ms: 0 };
         }
