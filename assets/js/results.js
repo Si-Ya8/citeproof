@@ -193,8 +193,7 @@
       L.push('- **不确定点**：' + unc.map(function (f) {
         return (D.FIELD_LABELS[f] || f) + '（' + (MANUAL_REASONS[f] || '未能自动核对') + '）';
       }).join('；'));
-      if (res.checked) L.push('- **已查内容**：' + res.checked);
-      L.push('- **下一步建议**：点卡片上的「重新核验」重试；或展开证据面板的「查库清单」，复制检索词、点每行「库内检索」跳到对应数据库核对（检索词已按标题自动填好，中文库需人工点开）。');
+      L.push('- **下一步建议**：点卡片上的「重新核验」重试；或查看「查库清单」，点「库内检索」跳到对应数据库核对（检索词已按标题自动填好，中文库需人工点开）。');
     }
     var ss = res.searches || [];
     if (ss.length) {
@@ -220,7 +219,7 @@
     return [
       '## 三、能力边界与使用说明', '',
       '1. **英文文献**：引擎实时检索 Crossref 与 OpenAlex 双库，字段一致判「通过」，多库一致无果才判「不存在」；',
-      '2. **中文文献**：国际文献库对中文期刊题录系统性未收录，国际库查不到时**不会判「不存在」**，只标「待人工确认」，并在证据面板的查库清单中提供知网 / 万方 / 百度学术一键检索入口（检索词只取标题），请人工核实后回产品标记结论；',
+      '2. **中文文献**：Crossref / OpenAlex 对中文期刊收录有限，中文文献**不检索这两个库**，直接标「待人工确认」，查库清单提供知网 / 万方 / 百度学术一键检索入口（检索词只取标题），请人工核实后回产品标记结论；',
       '3. **宁漏报原则**：检索服务不可用时不把「查不到」当「不存在」，一律转「待人工确认」；',
       '4. 标注「本地快照」的为演示数据，非实时检索；格式预检按 GB/T 7714 本地规则执行，仅供参考，不作为判定依据；',
       '5. 核验结论以数据库登记记录为准，最终引用请以原文为准；',
@@ -454,19 +453,17 @@
       rows + empty + '</div>';
   }
 
-  /* E-2 待人工确认明细：不确定点 + 已查内容 + 下一步 */
+  /* E-2 待人工确认明细：不确定点 + 下一步。
+     2026-11-07 按用户反馈删除「已查内容」段——检索过程与失败原因查库清单已逐行
+     体现，与证据文案重复；中文条目也不再产生国际库检索记录（见 core.js zh 早退分支） */
   function buildManualDetail(res) {
     var unc = (res.uncertain && res.uncertain.length) ? res.uncertain : ['authors', 'title', 'venue', 'year', 'doi'];
     var rows = unc.map(function (f) {
       return '<div class="mu-row"><span class="mu-f">' + (D.FIELD_LABELS[f] || f) + '</span><span class="mu-r">' + (MANUAL_REASONS[f] || '未能自动核对') + '</span></div>';
     }).join('');
-    var checked = res.checked
-      ? '<div class="mu-checked">' + C.icon('search', 14) + '<span>' + C.esc(res.checked) + '</span></div>'
-      : '';
     return '<div class="manual-box">' +
       '<div class="mu-sec"><h5>' + C.icon('alert-circle', 14) + '不确定点</h5><div class="mu-rows">' + rows + '</div></div>' +
-      (checked ? '<div class="mu-sec"><h5>' + C.icon('database', 14) + '已查内容</h5>' + checked + '</div>' : '') +
-      '<div class="mu-sec"><h5>' + C.icon('info', 14) + '下一步建议</h5><div class="mu-next">点卡片上的「重新核验」重试；或展开下方「查库清单」，复制检索词、点「库内检索」跳到对应数据库核对（检索词已按标题自动填好，中文库需人工点开），核实后回上方标记人工结论。</div></div>' +
+      '<div class="mu-sec"><h5>' + C.icon('info', 14) + '下一步建议</h5><div class="mu-next">点卡片上的「重新核验」重试；或查看「查库清单」，点「库内检索」跳到对应数据库核对（检索词已按标题自动填好，中文库需人工点开），核实后回上方标记人工结论。</div></div>' +
       '</div>';
   }
 
@@ -768,7 +765,6 @@
           result: {
             verdict: 'manual', lang: it0.lang, cited: it0, db: null, matched: [], mismatch: [],
             uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
-            checked: '核验流程异常中断，本条未能完成自动核验。',
             evidence: '核验服务异常，未能完成本条自动核验，请重试或人工核对。',
             searches: [{ db: 'Crossref 题录检索', query: it0.title, hits: -1 }, { db: 'OpenAlex 题录检索', query: it0.title, hits: -1 }]
               .concat(it0.lang === 'zh' ? [

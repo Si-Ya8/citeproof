@@ -701,8 +701,6 @@ a:hover { text-decoration: underline; }
 .mu-row { display: flex; align-items: baseline; gap: 12px; font-size: 13px; }
 .mu-f { flex: none; width: 88px; font-weight: 600; color: var(--ink-700); }
 .mu-r { color: var(--ink-500); line-height: 1.6; }
-.mu-checked { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; color: var(--ink-500); line-height: 1.7; }
-.mu-checked .ic { color: var(--ink-300); margin-top: 3px; flex: none; }
 .mu-next { font-size: 13px; color: var(--ink-500); line-height: 1.8; }
 
 @media (max-width: 1080px) {

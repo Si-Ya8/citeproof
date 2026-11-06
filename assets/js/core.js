@@ -633,7 +633,9 @@ window.CP_CORE = (function () {
     };
   }
 
-  /* 待人工确认：结构化明细（E-2）——不确定字段 + 已查内容 + 原因 */
+  /* 待人工确认：结构化明细（E-2）——不确定字段 + 原因。
+     checked 字段：2026-11-07 应用户要求删除「已查内容」展示段（内容与证据文案、
+     查库清单逐行状态重复），数据暂留未渲染，仅作后续排障参考 */
   function manualResult(cited, reason, opts) {
     opts = opts || {};
     var fields = opts.uncertain || ['authors', 'title', 'venue', 'year', 'doi'];
@@ -723,6 +725,27 @@ window.CP_CORE = (function () {
       });
     }
 
+    /* 中文文献：跳过 Crossref / OpenAlex 双库（用户 2026-11-07 决策）——两库以英文
+       文献为主，对中文期刊收录有限，检索既无参考价值，「无记录」结论还会误导用户。
+       直接降级为待人工确认，查库清单只保留知网 / 万方 / 百度学术三个人工核实入口。
+       仅拦 lang==='zh'：英文条目（无 DOI 与有 DOI 两条路径）流程完全不变，
+       遵守英文核验代码冻结纪律。 */
+    if (item.lang === 'zh') {
+      return Promise.resolve({
+        preset: false, ms: 0,
+        result: manualResult(item,
+          '中文文献已跳过 Crossref / OpenAlex 检索（两库对中文期刊收录有限）——请通过知网 / 万方 / 百度学术人工核实，并在上方标记人工结论。',
+          {
+            uncertain: item.doi ? ['authors', 'title', 'venue', 'year', 'doi'] : ['authors', 'title', 'venue', 'year'],
+            searches: [
+              { db: '知网检索', query: zhSearchQuery(item), hits: null, suggest: true },
+              { db: '万方检索', query: zhSearchQuery(item), hits: null, suggest: true },
+              { db: '百度学术检索', query: zhSearchQuery(item), hits: null, suggest: true }
+            ]
+          })
+      });
+    }
+
     /* 无 DOI：走题录检索。注意区分「检索无结果」与「检索失败」——
        网络异常时绝不可误判为不存在，必须降级为待人工确认（可重试） */
     if (!item.doi) {
@@ -761,24 +784,6 @@ window.CP_CORE = (function () {
           return { preset: false, result: r, ms: 0 };
         }
         var srcNames = okSrcs.map(function (x) { return x.db; }).join(' 与 ');
-        /* 中文题录：国际库无果 ≠ 文献不存在。Crossref / OpenAlex 以英文文献为主，
-           中文期刊题录系统性未收录，宁漏报原则下降级为「待人工确认」，
-           并引导到知网 / 万方 / 百度学术核实（这三个库没有公开 API，只能人工核） */
-        if (item.lang === 'zh') {
-          return {
-            preset: false, ms: 0, result: manualResult(item,
-              '中文期刊文献：Crossref 与 OpenAlex 以英文文献为主，未检索到该题录属正常现象——国际库无果不代表文献不存在，请通过知网 / 万方 / 百度学术核实。',
-              {
-                uncertain: ['authors', 'title', 'venue', 'year'],
-                checked: '已检索 Crossref 与 OpenAlex，均无匹配记录；两个库对中文期刊收录有限，无法据此判定「不存在」。',
-                searches: searches.concat([
-                  { db: '知网检索', query: zhSearchQuery(item), hits: null, suggest: true },
-                  { db: '万方检索', query: zhSearchQuery(item), hits: null, suggest: true },
-                  { db: '百度学术检索', query: zhSearchQuery(item), hits: null, suggest: true }
-                ])
-              })
-          };
-        }
         /* 有库检索失败（如 OpenAlex 限流 / 网络波动）：证据链不完整，
            宁漏报原则下降级为待人工确认——missing 判定必须以双库一致无果为前提 */
         var failedSrcs = arr.filter(function (x) { return !x.ok; });
@@ -881,23 +886,6 @@ window.CP_CORE = (function () {
           var r2 = resultFromRecord(best, item, recDoi(best) ? 'https://doi.org/' + cleanDoi(recDoi(best)) : crossrefSearchUrl(item.title), bestSrc);
           r2.searches = searches;
           return { preset: false, result: r2, ms: 0 };
-        }
-        /* 中文题录（含中国注册机构 DOI，如 10.3969/j.issn...）：
-           国际 DOI 解析服务不收录，降级待人工确认，引导中文库核实 */
-        if (item.lang === 'zh') {
-          return {
-            preset: false, ms: 0, result: manualResult(item,
-              '中文文献：DOI ' + item.doi + ' 未能通过国际库解析或匹配——解析不到不代表文献不存在，请通过知网 / 万方 / 百度学术核实。',
-              {
-                uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
-                checked: '已尝试通过 Crossref 解析 DOI，并按题录检索 Crossref 与 OpenAlex，均未获得匹配记录；国际库对中文期刊收录有限，无法据此判定「不存在」。',
-                searches: searches.concat([
-                  { db: '知网检索', query: zhSearchQuery(item), hits: null, suggest: true },
-                  { db: '万方检索', query: zhSearchQuery(item), hits: null, suggest: true },
-                  { db: '百度学术检索', query: zhSearchQuery(item), hits: null, suggest: true }
-                ])
-              })
-          };
         }
         /* 有库检索失败（如 OpenAlex 限流 / 网络波动）：证据链不完整，
            宁漏报原则下降级为待人工确认——missing 判定必须以双库一致无果为前提 */

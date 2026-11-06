@@ -19,7 +19,7 @@ window.CP_DATA = (function () {
   var CONTACT_EMAIL = '2817278273@qq.com';
   /* 产品版本号：诊断页与旧版本缓存检测共用。
      升级时同步 +1，线上版本可通过 https://si-ya8.github.io/citeproof/diagnostic.html 核对 */
-  var CP_VERSION = 'v0.3.15';
+  var CP_VERSION = 'v0.3.16';
 
   /* 五类判定的元数据：文字标签 + 色标 + 图标，三者同时出现 */
   var VERDICTS = {
@@ -292,7 +292,7 @@ window.CP_DATA = (function () {
       db: { source: '本地题录快照 · 出版社书目', authors: '周志华', title: '机器学习', venue: '北京: 清华大学出版社', year: '2016', doi: '—' },
       matched: ['authors', 'title', 'venue', 'year'],
       evidence: '与出版社书目快照一致：作者、书名、出版社、版次年份四项匹配（专著无 DOI，以书目元数据比对）。',
-      searches: [{ db: '本地题录快照', query: '机器学习 · 周志华 · 2016', hits: 1 }, { db: 'OpenAlex', query: '机器学习 周志华', hits: 0 }],
+      searches: [{ db: '本地题录快照', query: '机器学习 · 周志华 · 2016', hits: 1 }],
       url: 'https://kns.cnki.net/kns8/defaultresult/index?kw=' + encodeURIComponent('机器学习 周志华')
     },
     {
@@ -301,7 +301,7 @@ window.CP_DATA = (function () {
       db: { source: '本地题录快照 · 出版社书目', authors: '李航', title: '统计学习方法', venue: '北京: 清华大学出版社', year: '2012', doi: '—' },
       matched: ['authors', 'title', 'venue', 'year'],
       evidence: '书目快照比对一致：作者、书名、出版社、年份四项匹配（专著无 DOI）。',
-      searches: [{ db: '本地题录快照', query: '统计学习方法 · 李航 · 2012', hits: 1 }, { db: 'OpenAlex', query: '统计学习方法 李航', hits: 0 }],
+      searches: [{ db: '本地题录快照', query: '统计学习方法 · 李航 · 2012', hits: 1 }],
       url: 'https://kns.cnki.net/kns8/defaultresult/index?kw=' + encodeURIComponent('统计学习方法 李航')
     },
     {
@@ -310,7 +310,7 @@ window.CP_DATA = (function () {
       db: { source: '本地题录快照 · CNKI 题录', authors: '孙志军, 薛磊, 许阳明, 王正', title: '深度学习研究综述', venue: '计算机应用研究 29(8)', year: '2012', doi: '—' },
       matched: ['authors', 'title', 'venue', 'year'],
       evidence: 'CNKI 题录快照一致：作者、篇名、期刊卷期、年份四项匹配，页码 2806-2810 吻合。',
-      searches: [{ db: '本地题录快照', query: '深度学习研究综述 · 孙志军', hits: 1 }, { db: 'OpenAlex', query: '深度学习研究综述', hits: 0 }],
+      searches: [{ db: '本地题录快照', query: '深度学习研究综述 · 孙志军', hits: 1 }],
       url: 'https://kns.cnki.net/kns8/defaultresult/index?kw=' + encodeURIComponent('深度学习研究综述 孙志军')
     },
     {
