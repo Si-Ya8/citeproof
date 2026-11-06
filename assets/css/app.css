@@ -236,6 +236,7 @@ a:hover { text-decoration: underline; }
 }
 .drop:hover, .drop.over { border-color: var(--brand); background: var(--brand-soft); }
 .drop.over { transform: scale(1.005); }
+.drop.busy { border-color: var(--brand); background: var(--brand-soft); pointer-events: none; opacity: .78; }
 .drop-ic {
   width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 14px; display: grid; place-items: center;
   background: var(--card); border: 1px solid var(--line); color: var(--brand); box-shadow: var(--sh-1);

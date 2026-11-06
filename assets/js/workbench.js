@@ -32,6 +32,11 @@
   document.getElementById('file-remove').innerHTML = C.icon('x', 15);
   document.getElementById('btn-sample-doc').innerHTML = C.icon('download', 14) + '下载示例文档（.txt）';
   document.getElementById('paste-err').innerHTML = C.icon('alert-circle', 16) + '<span></span>';
+  /* upload-err 同样需要 span 子元素：showErr() 要往 span 里写文案。
+     此前漏了这行——上传链路的每条错误提示一显示就抛
+     「Cannot set properties of null」异常并死寂，用户侧表现为
+     「点了完全没反应」。2026-11-06 用户报障 docx 上传失败的真根因。 */
+  document.getElementById('upload-err').innerHTML = C.icon('alert-circle', 16) + '<span></span>';
 
   /* 数据来源：如实区分「自动实时检索」与「人工核实入口」——
      核验引擎实际自动检索 Crossref / OpenAlex（+ DOI 解析走 DataCite）；
@@ -151,40 +156,60 @@
     drop.addEventListener(ev, function (e) { e.preventDefault(); drop.classList.remove('over'); });
   });
   drop.addEventListener('drop', function (e) { if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
-  fileInput.onchange = function () { if (fileInput.files[0]) handleFile(fileInput.files[0]); };
+  fileInput.onchange = function () {
+    var f = fileInput.files && fileInput.files[0];
+    if (!f) return;
+    handleFile(f);
+    /* 选完立即重置 value：否则再次选择同一个文件时 value 未变、onchange 不触发，
+       用户观感就是「点了完全没反应」。2026-11-06 用户报障的第二个根因。 */
+    fileInput.value = '';
+  };
 
   document.getElementById('file-remove').onclick = function () {
     parsed = null; fileCard.classList.remove('on'); fileInput.value = '';
+    setBusy(false);
     hideErr('upload-err');
   };
 
-  /* 最小 ZIP 读取（用于 docx 内的 word/document.xml） */
+  /* 最小 ZIP 读取（用于 docx 内的 word/document.xml）
+     重要：本函数的所有失败路径必须走 reject，绝不能同步 throw——
+     同步 throw 会逃逸调用方的 .then/.catch 链，异常直接冒泡到浏览器
+     事件层，用户侧表现为「点了完全没反应」（无成功提示、无错误提示）。
+     2026-11-06 用户报障「docx 无法成功上传、点击后完全没反应」即根因之一。 */
   function readZipEntry(buf, entryName) {
-    var u8 = new Uint8Array(buf), dv = new DataView(buf);
-    var eocd = -1;
-    for (var i = u8.length - 22; i >= 0; i--) { if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; } }
-    if (eocd < 0) throw new Error('不是有效的 docx 文件');
-    var cdCount = dv.getUint16(eocd + 10, true), cdOff = dv.getUint32(eocd + 16, true);
-    var p = cdOff;
-    for (var n = 0; n < cdCount; n++) {
-      if (dv.getUint32(p, true) !== 0x02014b50) break;
-      var nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), cmtLen = dv.getUint16(p + 32, true);
-      var method = dv.getUint16(p + 10, true), compSize = dv.getUint32(p + 20, true), lho = dv.getUint32(p + 42, true);
-      var name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nameLen));
-      if (name === entryName) {
-        var lnl = dv.getUint16(lho + 26, true), lel = dv.getUint16(lho + 28, true);
-        var start = lho + 30 + lnl + lel;
-        var raw = u8.subarray(start, start + compSize);
-        if (method === 0) return Promise.resolve(raw);
-        if (method === 8) {
-          return new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw')))
-            .arrayBuffer().then(function (b) { return new Uint8Array(b); });
+    return new Promise(function (resolve, reject) {
+      try {
+        var u8 = new Uint8Array(buf), dv = new DataView(buf);
+        var eocd = -1;
+        for (var i = u8.length - 22; i >= 0; i--) { if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; } }
+        if (eocd < 0) throw new Error('不是有效的 docx 文件');
+        var cdCount = dv.getUint16(eocd + 10, true), cdOff = dv.getUint32(eocd + 16, true);
+        var p = cdOff;
+        for (var n = 0; n < cdCount; n++) {
+          if (dv.getUint32(p, true) !== 0x02014b50) break;
+          var nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), cmtLen = dv.getUint16(p + 32, true);
+          var method = dv.getUint16(p + 10, true), compSize = dv.getUint32(p + 20, true), lho = dv.getUint32(p + 42, true);
+          var name = new TextDecoder().decode(u8.subarray(p + 46, p + 46 + nameLen));
+          if (name === entryName) {
+            if (typeof DecompressionStream === 'undefined' && method === 8) {
+              throw new Error('浏览器不支持 DecompressionStream 解压');
+            }
+            var lnl = dv.getUint16(lho + 26, true), lel = dv.getUint16(lho + 28, true);
+            var start = lho + 30 + lnl + lel;
+            var raw = u8.subarray(start, start + compSize);
+            if (method === 0) { resolve(raw); return; }
+            if (method === 8) {
+              new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw')))
+                .arrayBuffer().then(function (b) { resolve(new Uint8Array(b)); }, reject);
+              return;
+            }
+            throw new Error('不支持的压缩方式');
+          }
+          p += 46 + nameLen + extraLen + cmtLen;
         }
-        throw new Error('不支持的压缩方式');
-      }
-      p += 46 + nameLen + extraLen + cmtLen;
-    }
-    throw new Error('docx 内未找到文档内容');
+        throw new Error('docx 内未找到文档内容');
+      } catch (e) { reject(e); }
+    });
   }
 
   /* XML → 纯文本（保留段落换行） */
@@ -198,22 +223,75 @@
       .replace(/\n{3,}/g, '\n\n');
   }
 
+  /* docx 解析失败的精准文案：区分「不是 ZIP / 缺 document.xml / 压缩方式 / 浏览器能力」，
+     每种都给出用户可执行的处理办法，不再用一句笼统的「无法解析」 */
+  function docxFailMsg(e) {
+    var m = String((e && e.message) || '');
+    if (m.indexOf('不是有效的 docx') >= 0) {
+      return '该文件不是有效的 .docx（内部不是 ZIP 结构，可能是旧版 .doc 改了后缀名）——请用 Word / WPS 打开后「另存为」，格式选 .docx，再上传。';
+    }
+    if (m.indexOf('未找到文档内容') >= 0) {
+      return '该 .docx 内未找到 word/document.xml（不是标准 Word 文档）——请用 Word / WPS 重新保存为 .docx，或改用粘贴方式。';
+    }
+    if (m.indexOf('压缩方式') >= 0) {
+      return '该 .docx 使用了不支持的压缩方式——请用 Word / WPS 重新保存后再试。';
+    }
+    if (m.indexOf('DecompressionStream') >= 0) {
+      return '当前浏览器不支持文档解压——请换用最新版 Edge / Chrome，或改用粘贴方式。';
+    }
+    return '无法解析该 docx 文件（可能已损坏或非标准格式），请另存为 .txt 后重试。';
+  }
+
+  /* 解析中状态：drop 区域显示「正在解析文档…」，避免处理期间用户以为「点了没反应」 */
+  var dropTitle = document.getElementById('drop-title');
+  function setBusy(on) {
+    drop.classList.toggle('busy', !!on);
+    dropTitle.textContent = on ? '正在解析文档，请稍候…' : '点击选择，或把文件拖到这里';
+  }
+
   function handleFile(file) {
     hideErr('upload-err');
     var isDocx = /\.docx$/i.test(file.name), isTxt = /\.txt$/i.test(file.name);
     if (!isDocx && !isTxt) { showErr('upload-err', '只支持 .docx 与 .txt 文件，请重新选择。'); return; }
     if (file.size > 5 * 1024 * 1024) { showErr('upload-err', '文件超过 5 MB，请压缩或拆分后重试。'); return; }
 
+    setBusy(true);
     var reader = new FileReader();
-    reader.onerror = function () { showErr('upload-err', '文件读取失败，请重试或换用粘贴方式。'); };
+    reader.onerror = function () {
+      setBusy(false);
+      showErr('upload-err', '文件读取失败，请重试或换用粘贴方式。');
+    };
     reader.onload = function () {
-      if (/\.docx$/i.test(file.name)) {
+      /* 诊断信息：文件头魔数（docx 应为 50 4b 03 04，即 ZIP 签名）打到 console，
+         用户反馈上传问题时可按 F12 复制，便于快速定位 */
+      try {
+        var head = new Uint8Array(reader.result, 0, Math.min(8, file.size));
+        console.log('[CiteProof] 上传诊断', {
+          name: file.name, size: file.size, type: file.type || '(空)',
+          head: Array.prototype.map.call(head, function (b) { return ('0' + b.toString(16)).slice(-2); }).join(' ')
+        });
+      } catch (e) { /* 诊断失败不影响主流程 */ }
+
+      if (isDocx) {
         readZipEntry(reader.result, 'word/document.xml')
-          .then(function (bytes) { finishDoc(file, docxXmlToText(new TextDecoder().decode(bytes))); })
-          .catch(function () { showErr('upload-err', '无法解析该 docx 文件（可能已损坏或非标准格式），请另存为 .txt 后重试。'); });
+          .then(function (bytes) {
+            setBusy(false);
+            finishDoc(file, docxXmlToText(new TextDecoder().decode(bytes)));
+          })
+          .catch(function (e) {
+            setBusy(false);
+            console.warn('[CiteProof] docx 解析失败:', e);
+            showErr('upload-err', docxFailMsg(e));
+          });
       } else {
-        try { finishDoc(file, new TextDecoder().decode(new Uint8Array(reader.result))); }
-        catch (e) { showErr('upload-err', '文件解码失败，请确认是 UTF-8 编码的纯文本，或改用粘贴方式。'); }
+        try {
+          var text = new TextDecoder().decode(new Uint8Array(reader.result));
+          setBusy(false);
+          finishDoc(file, text);
+        } catch (e) {
+          setBusy(false);
+          showErr('upload-err', '文件解码失败，请确认是 UTF-8 编码的纯文本，或改用粘贴方式。');
+        }
       }
     };
     reader.readAsArrayBuffer(file);

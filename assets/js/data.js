@@ -19,7 +19,7 @@ window.CP_DATA = (function () {
   var CONTACT_EMAIL = '2817278273@qq.com';
   /* 产品版本号：诊断页与旧版本缓存检测共用。
      升级时同步 +1，线上版本可通过 https://si-ya8.github.io/citeproof/diagnostic.html 核对 */
-  var CP_VERSION = 'v0.3.9';
+  var CP_VERSION = 'v0.3.10';
 
   /* 五类判定的元数据：文字标签 + 色标 + 图标，三者同时出现 */
   var VERDICTS = {
