@@ -220,11 +220,27 @@ window.CP_CORE = (function () {
   }
 
   /* ---------------- 上传文档：文末参考文献提取 ---------------- */
+  /* 参考文献标题匹配（2026-11-06 放宽，用户上传省自然科学基金申报书触发）：
+     此前只认单独成行的「参考文献 / References」，导致大量常见写法漏匹配：
+     申报书模板的「主要参考文献」、「参考文献：」带冒号、「五、参考文献」
+     带章节编号等——用户文档明明有参考文献却提示「未找到区块」。
+     现放宽为「整行只有标题」模式：允许可选的编号前缀（一、/1.）、
+     可选的修饰前缀（主要/重要/关键等）、可选的冒号后缀，并忽略大小写；
+     同时不会误匹配正文里「参见参考文献[1]」这类句子（行内有其他文字即不匹配）。 */
+  var REF_HEAD_RE = /(?:^|\n)[\s　]*(?:\d+[.、．:]?\s*|[一二三四五六七八九十]+[、.．]\s*)?(?:主要|重要|关键|相关|其他)?\s*(参考文献|References?|Bibliography|引用文献)\s*[:：]?\s*(?:\n|$)/i;
+
+  /* 章节标题行（参考文献区块的终点）：如申报书模板的「四、申请人简历」。
+     不截断的话，后续章节内容会被 parseRefEntries 当作文献条目的续行，污染最后一条。 */
+  var REF_SECTION_RE = /(?:^|\n)\s*[一二三四五六七八九十]+\s*、/;
+
   function splitRefSection(text) {
-    var m = String(text).match(/(?:^|\n)\s*(参考文献|References?|REFERENCES|Bibliography|引用文献)\s*(?:\n|$)/);
-    if (!m) return { body: String(text), refs: '' };
-    var idx = m.index + m[0].length;
-    return { body: String(text).slice(0, m.index), refs: String(text).slice(idx) };
+    var all = String(text);
+    var m = all.match(REF_HEAD_RE);
+    if (!m) return { body: all, refs: '' };
+    var refs = all.slice(m.index + m[0].length);
+    var cut = refs.search(REF_SECTION_RE);
+    if (cut >= 0) refs = refs.slice(0, cut);
+    return { body: all.slice(0, m.index), refs: refs };
   }
 
   /* 把参考文献区块切成条目数组 */
@@ -234,7 +250,12 @@ window.CP_CORE = (function () {
     lines.forEach(function (l) {
       var m = l.match(/^\[(\d+)\]\s*(.*)$/);
       if (m) { cur = m[2].trim(); entries.push(cur); }
-      else if (cur != null && !/^(参考文献|References?)/i.test(l)) { cur += ' ' + l; entries[entries.length - 1] = cur; }
+      /* 续行追加需排除：标题行本身（含「主要参考文献」等带修饰写法）、
+         以及章节标题行（「四、xxx」）——双保险，防止漏截断时污染条目 */
+      else if (cur != null && !/^(主要|重要|关键|相关|其他)?\s*(参考文献|References?|Bibliography|引用文献)/i.test(l)
+               && !/^[一二三四五六七八九十]+\s*、/.test(l)) {
+        cur += ' ' + l; entries[entries.length - 1] = cur;
+      }
     });
     if (!entries.length) entries = lines.filter(function (l) { return l.length > 15; });
     return entries.map(function (t) { return t.replace(/\s+/g, ' ').trim(); });
