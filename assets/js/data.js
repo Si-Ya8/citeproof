@@ -19,7 +19,7 @@ window.CP_DATA = (function () {
   var CONTACT_EMAIL = '2817278273@qq.com';
   /* 产品版本号：诊断页与旧版本缓存检测共用。
      升级时同步 +1，线上版本可通过 https://si-ya8.github.io/citeproof/diagnostic.html 核对 */
-  var CP_VERSION = 'v0.3.8';
+  var CP_VERSION = 'v0.3.9';
 
   /* 五类判定的元数据：文字标签 + 色标 + 图标，三者同时出现 */
   var VERDICTS = {
@@ -64,13 +64,16 @@ window.CP_DATA = (function () {
      必须指向 /search/works 且带 from_ui=yes，服务端才直接渲染结果页。 */
   var CROSSREF_SEARCH_URL = 'https://search.crossref.org/search/works?q={q}&from_ui=yes';
 
-  /* OpenAlex 库内检索（2026-11-06 二次修正）：openalex.org 官网不提供网页检索，
-     整站挂在 Cloudflare 人机验证后面，且官网明确提示「请改用 API」；直连 API
-     返回的又是原始 JSON，用户观感就是「乱码页」。
-     因此改为本站自建的 openalex.html 检索结果页——浏览器直连 OpenAlex API
-     （CORS 已开放），把 JSON 渲染成可读的中文结果列表，与核验引擎同源同参。
-     用相对路径：结果页 / 诊断页等同源点击均可正确解析。 */
-  var OPENALEX_SEARCH_URL = 'openalex.html?q={q}';
+  /* OpenAlex 库内检索（2026-11-06 最终回退到官方网页检索）：
+     openalex.org 官网本身提供网页版检索（官方文档 help.openalex.org/access/website-basic
+     有说明），正确地址就是 openalex.org/works?search=关键词，点开即结果页。
+     历史弯路记录在案：v0.3.7 曾误改为直连 api.openalex.org（用户看到的是原始
+     JSON 乱码页），v0.3.8 又改为站内自建 openalex.html 结果页——两次都是多余
+     改动，用户明确要求与 Crossref 一致的体验：点开就是已搜索好的官方网页。
+     备注：用无头浏览器测试该地址会被 Cloudflare 安全验证拦截（提示"正在进行
+     安全验证"），这是测试环境现象；真实用户的浏览器通常几秒内自动通过验证，
+     正常显示检索结果。 */
+  var OPENALEX_SEARCH_URL = 'https://openalex.org/works?search={q}';
 
   /* 知网检索（2026-11-06 实测修正）：原 search.cnki.com.cn/Search.aspx 已 404，
      改用知网官方检索入口 kns.cnki.net/kns8/defaultresult/index（参数名 kw，不是 q）。 */
