@@ -19,7 +19,7 @@ window.CP_DATA = (function () {
   var CONTACT_EMAIL = '2817278273@qq.com';
   /* 产品版本号：诊断页与旧版本缓存检测共用。
      升级时同步 +1，线上版本可通过 https://si-ya8.github.io/citeproof/diagnostic.html 核对 */
-  var CP_VERSION = 'v0.3.6';
+  var CP_VERSION = 'v0.3.7';
 
   /* 五类判定的元数据：文字标签 + 色标 + 图标，三者同时出现 */
   var VERDICTS = {
@@ -57,17 +57,35 @@ window.CP_DATA = (function () {
    * 查库清单（E-5）：数据库名 → 库内检索链接模板
    * query 为 DOI 时跳 doi.org；本地快照无外链
    * --------------------------------------------------------- */
+  /* Crossref 库内检索的正确地址（2026-11-06 实测修正）：
+     官网首页表单 action=/search/works，GET 参数为 q + from_ui=yes。
+     此前误用 https://search.crossref.org/?q=xxx——那只是空壳首页，
+     q 参数被忽略，用户点开只看到空搜索框、不会自动检索。
+     必须指向 /search/works 且带 from_ui=yes，服务端才直接渲染结果页。 */
+  var CROSSREF_SEARCH_URL = 'https://search.crossref.org/search/works?q={q}&from_ui=yes';
+
+  /* OpenAlex 库内检索（2026-11-06 实测修正）：openalex.org 官网不提供网页检索，
+     整站挂在 Cloudflare 人机验证后面，且官网明确提示「请改用 API」。
+     因此库内检索直接指向 OpenAlex API 的 works 检索端点——浏览器打开即是
+     JSON 格式的检索结果（含标题/作者/年份/DOI，可人工核对）。
+     mailto 走礼貌池（与本站检索同一邮箱），per-page 限制条数避免一次拉太多。 */
+  var OPENALEX_SEARCH_URL = 'https://api.openalex.org/works?search={q}&per-page=10&mailto=' + CONTACT_EMAIL;
+
+  /* 知网检索（2026-11-06 实测修正）：原 search.cnki.com.cn/Search.aspx 已 404，
+     改用知网官方检索入口 kns.cnki.net/kns8/defaultresult/index（参数名 kw，不是 q）。 */
+  var CNKI_SEARCH_URL = 'https://kns.cnki.net/kns8/defaultresult/index?kw={q}';
+
   var DB_SEARCH_LINKS = {
-    'Crossref': 'https://search.crossref.org/?q={q}',
-    'Crossref 题录检索': 'https://search.crossref.org/?q={q}',
+    'Crossref': CROSSREF_SEARCH_URL,
+    'Crossref 题录检索': CROSSREF_SEARCH_URL,
     'Crossref DOI 解析': 'https://doi.org/{q}',
-    'OpenAlex': 'https://openalex.org/works?search={q}',
-    'OpenAlex 题录检索': 'https://openalex.org/works?search={q}',
+    'OpenAlex': OPENALEX_SEARCH_URL,
+    'OpenAlex 题录检索': OPENALEX_SEARCH_URL,
     'DataCite': 'https://doi.org/{q}',
     'DataCite DOI 解析': 'https://doi.org/{q}',
     'Semantic Scholar': 'https://www.semanticscholar.org/search?q={q}',
     /* 中文库：无公开 API，核验引擎不会自动检索，仅作人工核实入口 */
-    '知网检索': 'https://search.cnki.com.cn/Search.aspx?q={q}',
+    '知网检索': CNKI_SEARCH_URL,
     '万方检索': 'https://s.wanfangdata.com.cn/paper?q={q}',
     '百度学术检索': 'https://xueshu.baidu.com/s?wd={q}',
     'CNKI 题录快照': null,
@@ -296,7 +314,7 @@ window.CP_DATA = (function () {
         { db: 'OpenAlex', query: 'A comprehensive survey of cross-modal affective computing', hits: 0 },
         { db: '本地题录快照', query: 'Zhang Y. · IEEE TAFFC · 2023', hits: 0 }
       ],
-      url: 'https://search.crossref.org/?q=' + encodeURIComponent('A comprehensive survey of cross-modal affective computing')
+      url: CROSSREF_SEARCH_URL.replace('{q}', encodeURIComponent('A comprehensive survey of cross-modal affective computing'))
     },
     {
       id: 'E19', verdict: 'wrong', lang: 'en',
@@ -371,6 +389,9 @@ window.CP_DATA = (function () {
     SAMPLE: SAMPLE,
     RESULTS: RESULTS,
     RULES_HTML: RULES_HTML,
+    CROSSREF_SEARCH_URL: CROSSREF_SEARCH_URL,
+    OPENALEX_SEARCH_URL: OPENALEX_SEARCH_URL,
+    CNKI_SEARCH_URL: CNKI_SEARCH_URL,
     dbSearchUrl: dbSearchUrl,
     isLocalDb: isLocalDb,
     manualSearchUrls: manualSearchUrls,

@@ -509,6 +509,15 @@ window.CP_CORE = (function () {
   function recDoi(rec) {
     return rec ? (rec.DOI || rec.doi) : '';
   }
+  /* Crossref 库内检索链接（打开原页面 / 查库清单共用）：
+     必须走 /search/works 且带 from_ui=yes——与官网首页表单提交参数一致，
+     服务端直接渲染检索结果页。2026-11-06 实测：search.crossref.org/?q=xxx
+     只是空壳首页，q 参数被忽略，用户点开只看到空搜索框、不会自动检索。 */
+  function crossrefSearchUrl(q) {
+    var tpl = (window.CP_DATA && window.CP_DATA.CROSSREF_SEARCH_URL) ||
+      'https://search.crossref.org/search/works?q={q}&from_ui=yes';
+    return tpl.replace('{q}', encodeURIComponent(q || ''));
+  }
   function resultFromRecord(rec, cited, url, source) {
     var db = {
       source: source, authors: authorNames(rec), title: recTitle(rec),
@@ -559,11 +568,12 @@ window.CP_CORE = (function () {
       checked: opts.checked || null,
       evidence: reason,
       searches: opts.searches || [],
-      /* 中文题录跳知网检索（doi.org 对 10.3969 等中国前缀解析不通），英文走原逻辑 */
+      /* 中文题录跳知网检索（kns.cnki.net 为知网官方检索入口；doi.org 对 10.3969
+         等中国前缀解析不通），英文走 Crossref 检索页 */
       url: cited.lang === 'zh'
-        ? 'https://search.cnki.com.cn/Search.aspx?q=' + encodeURIComponent(cited.title || cited.raw)
+        ? ((window.CP_DATA && window.CP_DATA.CNKI_SEARCH_URL) || 'https://kns.cnki.net/kns8/defaultresult/index?kw={q}').replace('{q}', encodeURIComponent(cited.title || cited.raw))
         : (cited.doi ? 'https://doi.org/' + encodeURIComponent(cited.doi)
-          : 'https://search.crossref.org/?q=' + encodeURIComponent(cited.title || cited.raw))
+          : crossrefSearchUrl(cited.title || cited.raw))
     };
   }
 
@@ -670,7 +680,7 @@ window.CP_CORE = (function () {
         var searches = okSrcs.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: x.data.length }; })
           .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1, err: errText(x.err) }; }));
         if (best && bestScore > 0) {
-          var r = resultFromRecord(best, item, recDoi(best) ? 'https://doi.org/' + cleanDoi(recDoi(best)) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), src);
+          var r = resultFromRecord(best, item, recDoi(best) ? 'https://doi.org/' + cleanDoi(recDoi(best)) : crossrefSearchUrl(item.title), src);
           r.searches = searches;
           return { preset: false, result: r, ms: 0 };
         }
@@ -712,7 +722,7 @@ window.CP_CORE = (function () {
             verdict: 'missing', lang: item.lang, cited: item, db: null, matched: [], mismatch: [],
             evidence: srcNames + ' 检索均未找到匹配记录，该条目可能为虚构引用。',
             searches: searches.concat([{ db: '本地题录快照', query: item.title, hits: 0 }]),
-            url: 'https://search.crossref.org/?q=' + encodeURIComponent(item.title)
+            url: crossrefSearchUrl(item.title)
           }
         };
       }).catch(function (e) {
@@ -792,7 +802,7 @@ window.CP_CORE = (function () {
           });
         });
         if (best && bs > 0) {
-          var r2 = resultFromRecord(best, item, recDoi(best) ? 'https://doi.org/' + cleanDoi(recDoi(best)) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), bestSrc);
+          var r2 = resultFromRecord(best, item, recDoi(best) ? 'https://doi.org/' + cleanDoi(recDoi(best)) : crossrefSearchUrl(item.title), bestSrc);
           r2.searches = searches;
           return { preset: false, result: r2, ms: 0 };
         }
@@ -832,7 +842,7 @@ window.CP_CORE = (function () {
             verdict: 'missing', lang: item.lang, cited: item, db: null, matched: [], mismatch: [],
             evidence: 'DOI ' + item.doi + ' 无法解析，Crossref 与 OpenAlex 双库题录检索均未找到匹配记录。',
             searches: searches.concat([{ db: '本地题录快照', query: item.title, hits: 0 }]),
-            url: 'https://search.crossref.org/?q=' + encodeURIComponent(item.title)
+            url: crossrefSearchUrl(item.title)
           }
         };
       });
@@ -860,6 +870,7 @@ window.CP_CORE = (function () {
     splitRefSection: splitRefSection, parseRefEntries: parseRefEntries, extractInlineCitations: extractInlineCitations,
     jaccard: jaccard, norm: norm,
     authorLinked: authorLinked, liveScore: liveScore,
+    crossrefSearchUrl: crossrefSearchUrl,
     probeSources: probeSources,
     verifyItem: verifyItem
   };
