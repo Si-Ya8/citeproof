@@ -286,31 +286,65 @@ window.CP_CORE = (function () {
    * ---------------------------------------------------------------- */
   var API_TIMEOUT = 12000;
 
-  /* 网络层异常（超时 abort / 连接失败）才值得重试；
-     HTTP 状态错误（429/403/5xx）与 404、JSON 解析失败不重试 */
+  /* 网络层异常（超时 abort / 连接失败）才值得立即重试；
+     HTTP 429（限流）单独延迟重试一次；其他 HTTP 错误与 404、JSON 解析失败不重试 */
   function isRetryable(e) {
     return !!e && (e.name === 'AbortError' || e.name === 'TypeError');
+  }
+
+  /* 把失败原因规范化到错误对象上：code（TIMEOUT/NETWORK/HTTPxxx）+ ms（耗时），
+     供上层在查库清单里如实展示「为什么失败」——用户侧排障全靠它 */
+  function tagError(e, t0) {
+    if (!e.code) {
+      e.code = e.name === 'AbortError' ? 'TIMEOUT' : (e.name === 'TypeError' ? 'NETWORK' : 'UNKNOWN');
+    }
+    e.ms = Date.now() - t0;
+    return e;
   }
 
   function fetchOnce(url, timeoutMs) {
     var ctrl = new AbortController();
     var t = setTimeout(function () { ctrl.abort(); }, timeoutMs || API_TIMEOUT);
+    var t0 = Date.now();
     return fetch(url, { signal: ctrl.signal, headers: { 'Accept': 'application/json' } })
       .then(function (r) {
         clearTimeout(t);
         if (r.status === 404) return null;
-        if (!r.ok) throw new Error('HTTP ' + r.status);
+        if (!r.ok) {
+          var he = new Error('HTTP ' + r.status);
+          he.code = 'HTTP' + r.status;
+          he.ms = Date.now() - t0;
+          throw he;
+        }
         return r.json();
       })
-      .catch(function (e) { clearTimeout(t); throw e; });
+      .catch(function (e) { clearTimeout(t); throw tagError(e, t0); });
   }
 
   function fetchJson(url, timeoutMs) {
-    /* 首次失败且为网络层异常 → 间隔 1s 自动重试一次，吸收偶发波动 */
     return fetchOnce(url, timeoutMs).catch(function (e) {
-      if (!isRetryable(e)) throw e;
-      return new Promise(function (res) { setTimeout(res, 1000); }).then(function () { return fetchOnce(url, timeoutMs); });
+      /* 网络层异常 → 间隔 1s 重试一次，吸收偶发波动 */
+      if (isRetryable(e)) {
+        return new Promise(function (res) { setTimeout(res, 1000); }).then(function () { return fetchOnce(url, timeoutMs); });
+      }
+      /* 429 限流 → 间隔 2s 再试一次（OpenAlex 每秒请求数限流，等 2s 通常可恢复） */
+      if (e.code === 'HTTP429') {
+        return new Promise(function (res) { setTimeout(res, 2000); }).then(function () { return fetchOnce(url, timeoutMs); });
+      }
+      throw e;
     });
+  }
+
+  /* 错误原因 → 用户可读短文本（查库清单「检索失败」后面的括号内容） */
+  function errText(e) {
+    if (!e) return '未知原因';
+    if (e.code === 'TIMEOUT') return '连接超时（' + Math.round((e.ms || API_TIMEOUT) / 1000 * 10) / 10 + 's 无响应）';
+    if (e.code === 'NETWORK') return '网络连接失败（浏览器无法到达服务器）';
+    if (e.code === 'HTTP429') return 'HTTP 429 接口限流（已自动重试 1 次）';
+    if (e.code === 'HTTP403') return 'HTTP 403 访问被拒绝';
+    if (e.code && e.code.indexOf('HTTP5') === 0) return e.code + ' 服务端错误';
+    if (e.code && e.code.indexOf('HTTP') === 0) return e.code + ' 请求被拒';
+    return (e.message || String(e)).slice(0, 60);
   }
 
   /* 数据源健康探测：不重试、短超时（8s），快速返回两库连通状态。
@@ -454,7 +488,7 @@ window.CP_CORE = (function () {
       ['authors', !cited.authors || authorsOk],
       ['title', titleOk],
       ['venue', !cited.venue || jaccard(cited.venue, db.venue) > 0.2],
-      ['year', !cited.year || cited.year === db.year],
+      ['year', !cited.year || String(cited.year) === String(db.year)],
       ['doi', !cited.doi || String(cited.doi).toLowerCase() === String(db.doi).toLowerCase()]
     ];
     pairs.forEach(function (p) { (p[1] ? matched : mismatch).push(p[0]); });
@@ -545,9 +579,9 @@ window.CP_CORE = (function () {
     if (!item.doi) {
       return Promise.all([
         crossrefSearch(item.title || item.raw).then(function (r) { return { db: 'Crossref', ok: true, data: r }; },
-          function () { return { db: 'Crossref', ok: false }; }),
+          function (e) { return { db: 'Crossref', ok: false, err: e }; }),
         openAlexSearch(item.title || item.raw).then(function (r) { return { db: 'OpenAlex', ok: true, data: r }; },
-          function () { return { db: 'OpenAlex', ok: false }; })
+          function (e) { return { db: 'OpenAlex', ok: false, err: e }; })
       ]).then(function (arr) {
         var okSrcs = arr.filter(function (x) { return x.ok; });
         /* 两个库全部检索失败 → 待人工确认（宁漏报：绝不判不存在） */
@@ -559,7 +593,7 @@ window.CP_CORE = (function () {
               {
                 uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
                 checked: '已尝试检索 Crossref 与 OpenAlex，两个库均未返回结果（网络异常或超时），本条字段无一完成比对。',
-                searches: arr.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1 }; })
+                searches: arr.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1, err: errText(x.err) }; })
               })
           };
         }
@@ -571,7 +605,7 @@ window.CP_CORE = (function () {
           });
         });
         var searches = okSrcs.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: x.data.length }; })
-          .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1 }; }));
+          .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1, err: errText(x.err) }; }));
         if (best && bestScore >= 0.6) {
           var r = resultFromRecord(best, item, best.DOI ? 'https://doi.org/' + cleanDoi(best.DOI) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), src);
           r.searches = searches;
@@ -605,7 +639,7 @@ window.CP_CORE = (function () {
               failedSrcs.map(function (x) { return x.db; }).join(' 与 ') + ' 检索服务暂时不可用（网络波动或接口限流），本条仅完成部分数据库核验——单库无匹配记录不足以判定「不存在」，已降级为待人工确认。请稍后点卡片上的「重新核验」重试，或按下方检索词人工核对。',
               {
                 uncertain: ['authors', 'title', 'venue', 'year'],
-                checked: '已完成：' + okSrcs.map(function (x) { return x.db + ' 返回 ' + x.data.length + ' 条相近记录，标题相似度均未达匹配阈值'; }).join('；') + '。未完成：' + failedSrcs.map(function (x) { return x.db + ' 检索失败'; }).join('、') + '。',
+                checked: '已完成：' + okSrcs.map(function (x) { return x.db + ' 返回 ' + x.data.length + ' 条相近记录，标题相似度均未达匹配阈值'; }).join('；') + '。未完成：' + failedSrcs.map(function (x) { return x.db + ' 检索失败（' + errText(x.err) + '）'; }).join('、') + '。',
                 searches: searches
               })
           };
@@ -666,14 +700,14 @@ window.CP_CORE = (function () {
       /* DOI 无法解析：再用题录检索兜底（Crossref + OpenAlex 双库并行，宁漏报） */
       return Promise.all([
         crossrefSearch(item.title || item.raw).then(function (r) { return { db: 'Crossref', ok: true, data: r }; },
-          function () { return { db: 'Crossref', ok: false }; }),
+          function (e) { return { db: 'Crossref', ok: false, err: e }; }),
         openAlexSearch(item.title || item.raw).then(function (r) { return { db: 'OpenAlex', ok: true, data: r }; },
-          function () { return { db: 'OpenAlex', ok: false }; })
+          function (e) { return { db: 'OpenAlex', ok: false, err: e }; })
       ]).then(function (arr) {
         var okSrcs = arr.filter(function (x) { return x.ok; });
         var searches = [{ db: 'Crossref DOI 解析', query: item.doi, hits: 0 }]
           .concat(okSrcs.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: x.data.length }; }))
-          .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1 }; }));
+          .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1, err: errText(x.err) }; }));
         /* 两个库全部检索失败 → 待人工确认（宁漏报：绝不判不存在） */
         if (!okSrcs.length) {
           return {
@@ -725,7 +759,7 @@ window.CP_CORE = (function () {
               failedSrcs.map(function (x) { return x.db; }).join(' 与 ') + ' 检索服务暂时不可用（网络波动或接口限流），DOI 解析与部分数据库检索未完成——单库无匹配记录不足以判定「不存在」，已降级为待人工确认。请稍后点卡片上的「重新核验」重试，或按下方检索词人工核对。',
               {
                 uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
-                checked: '已完成：DOI ' + item.doi + ' 解析未获得结果，' + okSrcs.map(function (x) { return x.db + ' 返回 ' + x.data.length + ' 条相近记录，标题相似度均未达匹配阈值'; }).join('；') + '。未完成：' + failedSrcs.map(function (x) { return x.db + ' 检索失败'; }).join('、') + '。',
+                checked: '已完成：DOI ' + item.doi + ' 解析未获得结果，' + okSrcs.map(function (x) { return x.db + ' 返回 ' + x.data.length + ' 条相近记录，标题相似度均未达匹配阈值'; }).join('；') + '。未完成：' + failedSrcs.map(function (x) { return x.db + ' 检索失败（' + errText(x.err) + '）'; }).join('、') + '。',
                 searches: searches
               })
           };

@@ -20,7 +20,7 @@
      但提前告知用户刷新页面，避免「OpenAlex 一直检索失败」的困惑 */
   if (!D.OPENALEX_API_KEY) {
     setTimeout(function () {
-      C.toast('检测到旧版本代码（' + (D.CP_VERSION || '未知版本') + '，当前应为 v0.3.3）：OpenAlex 密钥未加载，OpenAlex 检索将受限（Crossref 核验不受影响）——请强制刷新（Ctrl+Shift+R），或打开 diagnostic.html 诊断页查因', 10000);
+      C.toast('检测到旧版本代码（' + (D.CP_VERSION || '未知版本') + '，当前应为 v0.3.4）：OpenAlex 密钥未加载，OpenAlex 检索将受限（Crossref 核验不受影响）——请强制刷新（Ctrl+Shift+R），或打开 diagnostic.html 诊断页查因', 10000);
     }, 600);
   }
 
@@ -203,7 +203,7 @@
       ss.forEach(function (s) {
         var line = '  - ' + s.db + '：检索词「' + s.query + '」→ ' +
           (s.suggest ? '建议人工核实（该库无公开接口）'
-            : (s.hits === -1 || s.hits == null ? '检索失败' : s.hits + ' 条结果'));
+            : (s.hits === -1 || s.hits == null ? '检索失败' + (s.err ? '（' + s.err + '）' : '') : s.hits + ' 条结果'));
         if (D.isLocalDb(s.db)) line += '（本地快照，非实时检索）';
         L.push(line);
       });
@@ -497,6 +497,8 @@
       var failed = suggest ? false : (s.hits === -1 || s.hits == null);
       var cls = suggest ? 'suggest' : (failed ? 'fail' : (s.hits === 0 ? 'zero' : 'hit'));
       var txt = suggest ? '建议人工核实' : (failed ? '检索失败' : (s.hits === 0 ? '0 条结果' : s.hits + ' 条结果'));
+      /* 失败原因（HTTP 状态/超时/连接失败）——用户侧排障的关键信息，截图即可定位 */
+      var errHtml = (failed && s.err) ? '<span class="sr-err" title="' + C.esc(s.err) + '">' + C.esc(s.err) + '</span>' : '';
       var local = D.isLocalDb(s.db);
       var url = local ? null : D.dbSearchUrl(s.db, s.query);
       var link = local
@@ -505,7 +507,7 @@
       return '<div class="sr-row">' +
         '<span class="sr-db">' + C.icon('database', 14) + C.esc(s.db) + '</span>' +
         '<span class="sr-q" title="' + C.esc(s.query) + '">' + C.esc(s.query) + '</span>' +
-        '<span class="sr-hits ' + cls + '">' + txt + '</span>' +
+        '<span class="sr-hits ' + cls + '">' + txt + '</span>' + errHtml +
         '<button class="btn-ev" style="height:26px;padding:0 8px" data-copy="' + C.esc(s.query) + '" title="复制检索词">' + C.icon('copy', 13) + '</button>' +
         link + '</div>';
     }).join('');
