@@ -19,7 +19,7 @@ window.CP_DATA = (function () {
   var CONTACT_EMAIL = '2817278273@qq.com';
   /* 产品版本号：诊断页与旧版本缓存检测共用。
      升级时同步 +1，线上版本可通过 https://si-ya8.github.io/citeproof/diagnostic.html 核对 */
-  var CP_VERSION = 'v0.3.7';
+  var CP_VERSION = 'v0.3.8';
 
   /* 五类判定的元数据：文字标签 + 色标 + 图标，三者同时出现 */
   var VERDICTS = {
@@ -64,12 +64,13 @@ window.CP_DATA = (function () {
      必须指向 /search/works 且带 from_ui=yes，服务端才直接渲染结果页。 */
   var CROSSREF_SEARCH_URL = 'https://search.crossref.org/search/works?q={q}&from_ui=yes';
 
-  /* OpenAlex 库内检索（2026-11-06 实测修正）：openalex.org 官网不提供网页检索，
-     整站挂在 Cloudflare 人机验证后面，且官网明确提示「请改用 API」。
-     因此库内检索直接指向 OpenAlex API 的 works 检索端点——浏览器打开即是
-     JSON 格式的检索结果（含标题/作者/年份/DOI，可人工核对）。
-     mailto 走礼貌池（与本站检索同一邮箱），per-page 限制条数避免一次拉太多。 */
-  var OPENALEX_SEARCH_URL = 'https://api.openalex.org/works?search={q}&per-page=10&mailto=' + CONTACT_EMAIL;
+  /* OpenAlex 库内检索（2026-11-06 二次修正）：openalex.org 官网不提供网页检索，
+     整站挂在 Cloudflare 人机验证后面，且官网明确提示「请改用 API」；直连 API
+     返回的又是原始 JSON，用户观感就是「乱码页」。
+     因此改为本站自建的 openalex.html 检索结果页——浏览器直连 OpenAlex API
+     （CORS 已开放），把 JSON 渲染成可读的中文结果列表，与核验引擎同源同参。
+     用相对路径：结果页 / 诊断页等同源点击均可正确解析。 */
+  var OPENALEX_SEARCH_URL = 'openalex.html?q={q}';
 
   /* 知网检索（2026-11-06 实测修正）：原 search.cnki.com.cn/Search.aspx 已 404，
      改用知网官方检索入口 kns.cnki.net/kns8/defaultresult/index（参数名 kw，不是 q）。 */
