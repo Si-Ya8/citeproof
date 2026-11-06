@@ -194,7 +194,7 @@
         return (D.FIELD_LABELS[f] || f) + '（' + (MANUAL_REASONS[f] || '未能自动核对') + '）';
       }).join('；'));
       if (res.checked) L.push('- **已查内容**：' + res.checked);
-      L.push('- **下一步建议**：点卡片上的「重新核验」重试；或展开证据面板的「查库清单」，复制检索词、或点每行「库内检索」一键跳到对应数据库（检索词已按标题自动填好）。');
+      L.push('- **下一步建议**：点卡片上的「重新核验」重试；或展开证据面板的「查库清单」，复制检索词、点每行「库内检索」跳到对应数据库核对（检索词已按标题自动填好，中文库需人工点开）。');
     }
     var ss = res.searches || [];
     if (ss.length) {
@@ -447,10 +447,11 @@
         link + '</div>';
     }).join('');
     var empty = searches.length ? '' : '<div class="sr-row sr-empty">本条未产生检索记录——检索服务在发起请求前即不可用。</div>';
+    /* 2026-11-06：原「检索词可复制后自行复核 / 库内检索跳转 / 本地快照 / 建议人工核实」
+       四句说明与「下一步建议」内容重复，按用户反馈整段删除，只保留下一步建议一句话 */
     return '<div class="sr qlist">' +
       '<div class="qlist-head">' + C.icon('database', 15) + '<b>查库清单</b><span>本次实际查询的数据库、检索词与返回情况</span></div>' +
-      rows + empty +
-      '<div class="sr-note">' + C.icon('search', 14) + '<span>检索词可复制后自行到对应数据库复核；点「库内检索」一键跳到该库检索页；标注「本地快照」的为演示数据，非实时检索；标注「建议人工核实」的中文库没有公开接口，需人工点开核对。</span></div></div>';
+      rows + empty + '</div>';
   }
 
   /* E-2 待人工确认明细：不确定点 + 已查内容 + 下一步 */
@@ -465,7 +466,7 @@
     return '<div class="manual-box">' +
       '<div class="mu-sec"><h5>' + C.icon('alert-circle', 14) + '不确定点</h5><div class="mu-rows">' + rows + '</div></div>' +
       (checked ? '<div class="mu-sec"><h5>' + C.icon('database', 14) + '已查内容</h5>' + checked + '</div>' : '') +
-      '<div class="mu-sec"><h5>' + C.icon('info', 14) + '下一步建议</h5><div class="mu-next">点卡片上的「重新核验」重试；或展开下方「查库清单」，复制检索词、点每行「库内检索」一键跳到对应数据库（检索词已按标题自动填好，中文库只认标题）；核实后回上方标记人工结论。</div></div>' +
+      '<div class="mu-sec"><h5>' + C.icon('info', 14) + '下一步建议</h5><div class="mu-next">点卡片上的「重新核验」重试；或展开下方「查库清单」，复制检索词、点「库内检索」跳到对应数据库核对（检索词已按标题自动填好，中文库需人工点开），核实后回上方标记人工结论。</div></div>' +
       '</div>';
   }
 
@@ -584,16 +585,11 @@
     }
     body += buildQueryList(res);
 
-    var foot = '<div class="ev-foot">' +
-      '<span class="ev-src">数据来源：<b>' + C.esc((res.db && res.db.source) || 'Crossref / OpenAlex 实时检索') + '</b>' +
-      (res.searches && res.searches.length ? ' · 检索 ' + res.searches.length + ' 次' : '') + '</span>' +
-      '<span class="grow"></span>' +
-      (res.url ? '<a class="btn btn-ghost btn-sm" href="' + C.esc(res.url) + '" target="_blank" rel="noopener noreferrer">' + C.icon('external-link', 14) + '打开原页面</a>' : '') +
-      '</div>';
-
+    /* 2026-11-06：按用户反馈移除底部「数据来源 + 打开原页面」——
+       检索库与次数查库清单已逐行体现，原页面跳转与每行「库内检索」功能重复 */
     return '<div class="ev-clip"><div class="ev-inner">' +
       '<div class="ev-label">' + C.icon('eye', 13) + '证据面板 · ' + v.label +
-      '</div>' + head + body + foot + '</div></div>';
+      '</div>' + head + body + '</div></div>';
   }
 
   /* 格式预检提示（本地 GB/T 7714 检查，提示而非判定） */

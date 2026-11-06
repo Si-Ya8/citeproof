@@ -266,24 +266,70 @@ window.CP_CORE = (function () {
      视听融合导盲机器人的设计与研究」这类带作者前缀的检索词经常 0 结果，
      而纯标题「视听融合导盲机器人的设计与研究」正常命中——中文库只认标题。
      extractTitle 已处理标准 GB/T 格式；本函数兜底处理非标准变体
-     （作者段无标记、全角句点等漏剥场景），对已干净的标题无副作用。 */
+     （作者段无标记、全角句点等漏剥场景），对已干净的标题无副作用。
+     2026-11-06 补充（用户实测省自科申报书）：法规 / 标准类题录形如
+     「中华人民共和国无障碍环境建设法[Z]．2023-06-28」，extractTitle 剥掉
+     方括号后，裸类型代码「Z」与日期仍混在标题里，中文库同样搜不到——
+     增加尾部「日期段 / 类型代码段 / 裸类型代码 / 年份+卷期页码」剥除。 */
   function zhSearchQuery(item) {
     var q = String((item && (item.title || item.raw)) || '').trim();
     if (!q) return '';
+    var clean = q;
     /* 1. 去文献类型标记：[J] [M] [EB/OL] [D] 等（半角 / 全角方括号） */
     q = q.replace(/[\[\u3010]\s*(?:[A-Za-z]{1,5}(?:\/[A-Za-z]{1,5})?)\s*[\]\u3011]/g, ' ');
     /* 2. 仍含「作者段. 标题」结构时剥到最后一个句号后：
           中文标题几乎不含句号，而作者段几乎必含逗号 / 「等」——该特征稳定；
-          标题以数字开头（如「3.0 导盲技术」）时首段过短且无逗号，不会误剥 */
+          标题以数字开头（如「3.0 导盲技术」）时首段过短且无逗号，不会误剥。
+          单段作者无逗号时（如「全国人民代表大会常务委员会. 题名[Z]. 2023」），
+          机构名永不含逗号，靠「尾部是纯日期残留且至少三段」特征识别并剥掉作者段——
+          法规题录的标准写法，无此兜底时机构名会混进检索词 */
+    var TYPE_CODE = /^(?:EB\/OL|DB\/OL|DB\/MT|CP\/DK|J\/OL|M\/OL|N\/OL|C\/OL|R\/OL|S\/OL|[JMDCRSPZNG])$/i;
+    var DATE_ONLY = /^\d{4}(?:\s*[-/年.]\s*\d{1,2}(?:\s*[-/月.]\s*\d{1,2})?)?\s*日?$/;
     var parts = q.split(/[.\u3002\uFF0E]/).map(function (s) { return s.trim(); }).filter(Boolean);
     if (parts.length > 1) {
       var head = parts[0];
       if (head.length <= 60 && /[,\uFF0C\u3001;\uFF1B]|\u7b49\s*$/.test(head)) q = parts[parts.length - 1];
+      else if (parts.length >= 3 && DATE_ONLY.test(parts[parts.length - 1])) q = parts.slice(1).join(' ');
     }
-    /* 3. 清理首尾杂符与连续空白 */
+    /* 3. 剥掉尾部的「日期 / 文献类型代码」残留段：
+           「…建设法 Z ． 2023-06-28」按句读符号切出尾巴后，纯日期段
+           （2023 / 2023-06 / 2023-06-28 / 2023年）与纯类型代码段
+           （J / M / D / Z / EB/OL 等）逐段剥，撞上正常标题段即停；
+           只有真的剥掉过尾巴才重组字符串——「3.0 导盲技术研究」这类
+           标题内含句点的场景原样保留，不被 join 改写 */
+    var segs = q.split(/[.\u3002\uFF0E;；,，:：]/), popped = false;
+    while (segs.length > 1) {
+      var tail = segs[segs.length - 1].trim();
+      if (!tail || TYPE_CODE.test(tail) || DATE_ONLY.test(tail)) { segs.pop(); popped = true; }
+      else break;
+    }
+    if (popped && segs.length) q = segs.join(' ');
+    /* 3b. 剥掉尾部的裸文献类型代码（日期剥掉后剩下的「…建设法 Z」）：
+           GB/T 类型代码恒为大写，此处不做忽略大小写匹配，防误伤尾字母 */
+    q = q.replace(/(?:^|\s)(?:EB\/OL|DB\/OL|DB\/MT|CP\/DK|J\/OL|M\/OL|N\/OL|C\/OL|R\/OL|S\/OL|[JMDCRSPZNG])\s*$/, '');
+    /* 3c. 剥掉尾部的日期（前面必须有分隔符，防误伤「GB/T 27690-2023」标准号尾年份）
+           与「年份 + 卷(期): 页码」出版信息段（GB/T 题录尾巴） */
+    q = q.replace(/[\s,;:，。．、]+(?:(?:19|20)\d{2}(?:\s*[-/年.]\s*\d{1,2}(?:\s*[-/月.]\s*\d{1,2})?)?\s*日?)$/, '');
+    q = q.replace(/[\s,;:，。．、]+(?:19|20)\d{2}\s*[,，]?\s*\d*\s*(?:\(\s*[^()]{1,12}\s*\)\s*)?(?:[:：]\s*[\d\-–]+\s*(?:[-–,，]\s*[\d\-–]+\s*)*)$/, '');
+    /* 4. 清理首尾杂符与连续空白 */
     q = q.replace(/^[\s,\uFF0C;\uFF1B:\uFF1A\u3001|]+/, '').replace(/[\s,\uFF0C;\uFF1B:\uFF1A\u3001|]+$/, '')
       .replace(/\s+/g, ' ').trim();
+    /* 兜底：全部剥空（极端输入）时退回净化前文本，避免检索词为空 */
+    if (!q) q = clean;
     return q.length > 120 ? q.slice(0, 120) : q;
+  }
+
+  /* 查库清单 / 卡片检索按钮统一取词入口：
+     中文条目走 zhSearchQuery 净化（中文库只认标题，见上）；
+     英文条目保持原标题不动——英文题录检索对原始标题容错最好，
+     且英文核验代码已冻结，未经用户指令不得改动。 */
+  function searchQueryOf(item) {
+    if (!item) return '';
+    if (item.lang === 'zh') {
+      var zq = zhSearchQuery(item);
+      if (zq) return zq;
+    }
+    return item.title || item.raw || '';
   }
 
   /* ---------------- 字符串相似度 ---------------- */
@@ -696,7 +742,7 @@ window.CP_CORE = (function () {
               {
                 uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
                 checked: '已尝试检索 Crossref 与 OpenAlex，两个库均未返回结果（网络异常或超时），本条字段无一完成比对。',
-                searches: arr.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1, err: errText(x.err) }; })
+                searches: arr.map(function (x) { return { db: x.db + ' 题录检索', query: searchQueryOf(item), hits: -1, err: errText(x.err) }; })
               })
           };
         }
@@ -707,8 +753,8 @@ window.CP_CORE = (function () {
             if (s > bestScore) { bestScore = s; best = r; src = x.db; }
           });
         });
-        var searches = okSrcs.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: x.data.length }; })
-          .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1, err: errText(x.err) }; }));
+        var searches = okSrcs.map(function (x) { return { db: x.db + ' 题录检索', query: searchQueryOf(item), hits: x.data.length }; })
+          .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: searchQueryOf(item), hits: -1, err: errText(x.err) }; }));
         if (best && bestScore > 0) {
           var r = resultFromRecord(best, item, recDoi(best) ? 'https://doi.org/' + cleanDoi(recDoi(best)) : crossrefSearchUrl(item.title), src);
           r.searches = searches;
@@ -751,7 +797,7 @@ window.CP_CORE = (function () {
           preset: false, ms: 0, result: {
             verdict: 'missing', lang: item.lang, cited: item, db: null, matched: [], mismatch: [],
             evidence: srcNames + ' 检索均未找到匹配记录，该条目可能为虚构引用。',
-            searches: searches.concat([{ db: '本地题录快照', query: item.title, hits: 0 }]),
+            searches: searches.concat([{ db: '本地题录快照', query: searchQueryOf(item), hits: 0 }]),
             url: crossrefSearchUrl(item.title)
           }
         };
@@ -763,7 +809,7 @@ window.CP_CORE = (function () {
             {
               uncertain: ['authors', 'title', 'venue', 'year', 'doi'],
               checked: '检索请求未完成（网络异常或超时），本条字段无一完成比对。',
-              searches: [{ db: 'Crossref 题录检索', query: item.title, hits: -1 }, { db: 'OpenAlex 题录检索', query: item.title, hits: -1 }]
+              searches: [{ db: 'Crossref 题录检索', query: searchQueryOf(item), hits: -1 }, { db: 'OpenAlex 题录检索', query: searchQueryOf(item), hits: -1 }]
             })
         };
       });
@@ -809,8 +855,8 @@ window.CP_CORE = (function () {
       ]).then(function (arr) {
         var okSrcs = arr.filter(function (x) { return x.ok; });
         var searches = [{ db: 'Crossref DOI 解析', query: item.doi, hits: 0 }]
-          .concat(okSrcs.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: x.data.length }; }))
-          .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1, err: errText(x.err) }; }));
+          .concat(okSrcs.map(function (x) { return { db: x.db + ' 题录检索', query: searchQueryOf(item), hits: x.data.length }; }))
+          .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: searchQueryOf(item), hits: -1, err: errText(x.err) }; }));
         /* 两个库全部检索失败 → 待人工确认（宁漏报：绝不判不存在） */
         if (!okSrcs.length) {
           return {
@@ -871,7 +917,7 @@ window.CP_CORE = (function () {
           preset: false, ms: 0, result: {
             verdict: 'missing', lang: item.lang, cited: item, db: null, matched: [], mismatch: [],
             evidence: 'DOI ' + item.doi + ' 无法解析，Crossref 与 OpenAlex 双库题录检索均未找到匹配记录。',
-            searches: searches.concat([{ db: '本地题录快照', query: item.title, hits: 0 }]),
+            searches: searches.concat([{ db: '本地题录快照', query: searchQueryOf(item), hits: 0 }]),
             url: crossrefSearchUrl(item.title)
           }
         };
@@ -897,7 +943,7 @@ window.CP_CORE = (function () {
     extractDoi: extractDoi, extractYear: extractYear, extractTitle: extractTitle, extractAuthors: extractAuthors,
     sanitizeQuery: sanitizeQuery,
     formatCheck: formatCheck,
-    splitRefSection: splitRefSection, parseRefEntries: parseRefEntries, zhSearchQuery: zhSearchQuery,
+    splitRefSection: splitRefSection, parseRefEntries: parseRefEntries, zhSearchQuery: zhSearchQuery, searchQueryOf: searchQueryOf,
     jaccard: jaccard, norm: norm,
     authorLinked: authorLinked, liveScore: liveScore,
     crossrefSearchUrl: crossrefSearchUrl,
