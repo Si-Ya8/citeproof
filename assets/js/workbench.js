@@ -253,7 +253,11 @@
     hideErr('upload-err');
     var isDocx = /\.docx$/i.test(file.name), isTxt = /\.txt$/i.test(file.name);
     if (!isDocx && !isTxt) { showErr('upload-err', '只支持 .docx 与 .txt 文件，请重新选择。'); return; }
-    if (file.size > 5 * 1024 * 1024) { showErr('upload-err', '文件超过 5 MB，请压缩或拆分后重试。'); return; }
+    /* 大小上限 30 MB：docx 体积大只是内嵌图片，解析实际只读取其中
+       几十 KB 的 word/document.xml；localStorage 也只存提取出的题录文本，
+       不存文件本身。30 MB 以内 FileReader 内存无压力，足以覆盖带图申报书。
+       （2026-11-06 用户要求上调：原 5 MB 上限会拦住带图申报书） */
+    if (file.size > 30 * 1024 * 1024) { showErr('upload-err', '文件超过 30 MB，请压缩图片、删减插图后重试，或改用粘贴方式。'); return; }
 
     setBusy(true);
     var reader = new FileReader();
