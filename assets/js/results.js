@@ -20,7 +20,7 @@
      但提前告知用户刷新页面，避免「OpenAlex 一直检索失败」的困惑 */
   if (!D.OPENALEX_API_KEY) {
     setTimeout(function () {
-      C.toast('检测到旧版本代码（' + (D.CP_VERSION || '未知版本') + '，当前应为 v0.3.5）：OpenAlex 密钥未加载，OpenAlex 检索将受限（Crossref 核验不受影响）——请强制刷新（Ctrl+Shift+R），或打开 diagnostic.html 诊断页查因', 10000);
+      C.toast('检测到旧版本代码（' + (D.CP_VERSION || '未知版本') + '，当前应为 v0.3.6）：OpenAlex 密钥未加载，OpenAlex 检索将受限（Crossref 核验不受影响）——请强制刷新（Ctrl+Shift+R），或打开 diagnostic.html 诊断页查因', 10000);
     }, 600);
   }
 

@@ -592,6 +592,35 @@ window.CP_CORE = (function () {
     return bestScore >= 4 ? best : null;
   }
 
+  /* 首位作者姓的 token 级互含：兼容 "Bishop, C. M."（姓在前）与
+     "Chris Bishop"（名在前）两种写法；记录缺作者信息时返回 false（不送分，
+     避免「无作者记录」靠白送的分挤掉正主） */
+  function authorLinked(citeAuthors, rec) {
+    var cite = String(citeAuthors || '').toLowerCase().replace(/[.\s]+/g, ' ').trim();
+    var recRaw = authorNames(rec).toLowerCase().replace(/[.\s]+/g, ' ').trim();
+    if (!cite || !recRaw) return false;
+    var seg = cite.split(/[,;，；]/)[0].trim().split(/\s+/)[0];
+    if (!seg || seg.length < 2) return false;
+    return recRaw.split(/[,;，；\s]+/).indexOf(seg) >= 0;
+  }
+
+  /* 实时检索候选打分（量纲同 presetScore）：标题相似度 0..3 为主，
+     首位作者一致 +2、年份一致 +1。
+     为什么必须综合打分：标题相同但作者/年份不同的是「近邻重复」——
+     书评/短评的标题常与正主完全相同（用户实例：Bishop 2006 教材 vs
+     Technometrics 2007 书评 Radford M. Neal，两者标题一字不差）。
+     只按标题取第一条最高分会把书评选成正主，真实文献反被误判「张冠李戴」。
+     minSim 为标题门槛，低于门槛不参选（返回 0）。 */
+  function liveScore(item, rec, minSim) {
+    var ts = jaccard(item.title, recTitle(rec));
+    if (ts < (minSim || 0.6)) return 0;
+    var s = ts * 3;
+    if (authorLinked(item.authors || item.raw, rec)) s += 2;
+    var y1 = item.year, y2 = recYear(rec);
+    if (y1 && y2 && String(y1) === String(y2)) s += 1;
+    return s;
+  }
+
   function verifyItem(item, opts) {
     opts = opts || {};
     var results = opts.results || [];
@@ -630,13 +659,13 @@ window.CP_CORE = (function () {
         var best = null, bestScore = 0, src = '';
         okSrcs.forEach(function (x) {
           x.data.forEach(function (r) {
-            var s = jaccard(item.title, recTitle(r));
+            var s = liveScore(item, r, 0.6);
             if (s > bestScore) { bestScore = s; best = r; src = x.db; }
           });
         });
         var searches = okSrcs.map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: x.data.length }; })
           .concat(arr.filter(function (x) { return !x.ok; }).map(function (x) { return { db: x.db + ' 题录检索', query: item.title, hits: -1, err: errText(x.err) }; }));
-        if (best && bestScore >= 0.6) {
+        if (best && bestScore > 0) {
           var r = resultFromRecord(best, item, best.DOI ? 'https://doi.org/' + cleanDoi(best.DOI) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), src);
           r.searches = searches;
           return { preset: false, result: r, ms: 0 };
@@ -754,11 +783,11 @@ window.CP_CORE = (function () {
         var best = null, bs = 0, bestSrc = '';
         okSrcs.forEach(function (x) {
           x.data.forEach(function (r2) {
-            var s = jaccard(item.title, recTitle(r2));
+            var s = liveScore(item, r2, 0.7);
             if (s > bs) { bs = s; best = r2; bestSrc = x.db; }
           });
         });
-        if (best && bs >= 0.7) {
+        if (best && bs > 0) {
           var r2 = resultFromRecord(best, item, best.DOI ? 'https://doi.org/' + cleanDoi(best.DOI) : 'https://search.crossref.org/?q=' + encodeURIComponent(item.title), bestSrc);
           r2.searches = searches;
           return { preset: false, result: r2, ms: 0 };
@@ -826,6 +855,7 @@ window.CP_CORE = (function () {
     formatCheck: formatCheck,
     splitRefSection: splitRefSection, parseRefEntries: parseRefEntries, extractInlineCitations: extractInlineCitations,
     jaccard: jaccard, norm: norm,
+    authorLinked: authorLinked, liveScore: liveScore,
     probeSources: probeSources,
     verifyItem: verifyItem
   };
