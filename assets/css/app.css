@@ -419,28 +419,6 @@ a:hover { text-decoration: underline; }
 .sec-title::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .sec-title .ic { color: var(--ink-300); }
 
-/* 正文引用 vs 文末清单比对 */
-.compare { border: 1px solid var(--line); border-radius: var(--r-l); background: var(--card); box-shadow: var(--sh-1); margin-bottom: 26px; overflow: hidden; }
-.compare-head { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); background: #FDFDFE; }
-.compare-head .ic { color: var(--brand); }
-.compare-head b { font-size: 14px; color: var(--ink-800); }
-.compare-head span { font-size: 12.5px; color: var(--ink-400); }
-.compare-ok { display: flex; align-items: center; gap: 9px; padding: 14px 20px; font-size: 13px; color: var(--pass); font-weight: 600; background: var(--pass-soft); }
-.compare-grid { display: grid; grid-template-columns: 1fr 1fr; }
-.compare-col { padding: 16px 20px 18px; }
-.compare-col + .compare-col { border-left: 1px solid var(--line); }
-.cc-head { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; margin-bottom: 12px; }
-.cc-head .tag { font-family: var(--font-mono); font-size: 11px; padding: 1px 7px; border-radius: var(--r-s); }
-.cc-cited .cc-head { color: var(--missing); }
-.cc-cited .tag { background: var(--missing-soft); color: var(--missing); border: 1px solid var(--missing-line); }
-.cc-listed .cc-head { color: var(--wrong); }
-.cc-listed .tag { background: var(--wrong-soft); color: var(--wrong); border: 1px solid var(--wrong-line); }
-.cc-item { display: flex; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-m); margin-bottom: 8px; background: #FDFDFE; font-size: 13px; color: var(--ink-700); line-height: 1.6; }
-.cc-item .mk { font-family: var(--font-mono); font-size: 12px; font-weight: 700; flex: none; }
-.cc-cited .cc-item .mk { color: var(--missing); }
-.cc-listed .cc-item .mk { color: var(--wrong); }
-.cc-empty { font-size: 12.5px; color: var(--ink-300); padding: 6px 0; }
-
 /* 结果卡片 */
 .res-card {
   position: relative; display: flex; gap: 0; background: var(--card);
@@ -752,8 +730,6 @@ a:hover { text-decoration: underline; }
   .sum-top { flex-direction: column; gap: 14px; }
   .sum-right { width: 100%; text-align: left; }
   .sum-bar-actions { justify-content: flex-start; }
-  .compare-grid { grid-template-columns: 1fr; }
-  .compare-col + .compare-col { border-left: 0; border-top: 1px solid var(--line); }
   .brand-en { display: none; }
 }
 @media (max-width: 640px) {

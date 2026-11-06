@@ -132,7 +132,6 @@
   function renderEmpty() {
     C.store.del('results'); C.store.del('ui');
     document.getElementById('summary').style.display = 'none';
-    document.getElementById('doc-compare').innerHTML = '';
     document.getElementById('list-title').innerHTML = '';
     document.getElementById('cards').innerHTML =
       '<div class="empty">' +
@@ -217,33 +216,9 @@
     return L;
   }
 
-  function docCompareText() {
-    if (!state.doc) return [];
-    var listed = state.items.length;
-    var inline = state.doc.inline || [];
-    var citedNotListed = inline.filter(function (x) { return x < 1 || x > listed; });
-    var listedNotCited = [];
-    for (var i = 1; i <= listed; i++) if (inline.indexOf(i) === -1) listedNotCited.push(i);
-    var L = ['## 三、正文引用与文末清单比对', '',
-      '文档：' + (state.fileName || '上传文档') + '；正文引用标记 ' + inline.length + ' 处，文末清单 ' + listed + ' 条。', ''];
-    if (!citedNotListed.length && !listedNotCited.length) {
-      L.push('正文引用与文末清单完全一致，未发现「引了没列」或「列了没引」。');
-    } else {
-      L.push('- **引了没列**（' + citedNotListed.length + ' 处）：' + (citedNotListed.length
-        ? citedNotListed.map(function (x) { return '[' + x + ']'; }).join('、') + '——正文出现该引用标记，但文末参考文献清单中没有对应条目。'
-        : '无'));
-      L.push('- **列了没引**（' + listedNotCited.length + ' 条）：' + (listedNotCited.length
-        ? listedNotCited.map(function (x) {
-            return '[' + x + '] ' + cut(state.items[x - 1] ? state.items[x - 1].raw : '', 40);
-          }).join('；')
-        : '无'));
-    }
-    return L;
-  }
-
   function boundaryText() {
     return [
-      '## ' + (state.doc ? '四' : '三') + '、能力边界与使用说明', '',
+      '## 三、能力边界与使用说明', '',
       '1. **英文文献**：引擎实时检索 Crossref 与 OpenAlex 双库，字段一致判「通过」，多库一致无果才判「不存在」；',
       '2. **中文文献**：国际文献库对中文期刊题录系统性未收录，国际库查不到时**不会判「不存在」**，只标「待人工确认」，并提供知网 / 万方 / 百度学术一键检索入口，请人工核实后回产品标记结论；',
       '3. **宁漏报原则**：检索服务不可用时不把「查不到」当「不存在」，一律转「待人工确认」；',
@@ -284,8 +259,6 @@
       if (!state.results[j]) continue;
       L.push(detailText(j, state.results[j].result).join('\n'), '');
     }
-    var doc = docCompareText();
-    if (doc.length) L.push(doc.join('\n'), '');
     L.push(boundaryText().join('\n'));
     return L;
   }
@@ -420,44 +393,6 @@
       tip.className = 'filter-hidden-tip';
       tip.innerHTML = '';
     }
-  }
-
-  /* ---------------- 正文引用 vs 文末清单 ---------------- */
-  function renderDocCompare() {
-    var box = document.getElementById('doc-compare');
-    if (!state.doc) { box.innerHTML = ''; return; }
-    var listed = state.items.length;
-    var inline = state.doc.inline || [];
-    var citedNotListed = inline.filter(function (n) { return n < 1 || n > listed; });
-    var listedNotCited = [];
-    for (var i = 1; i <= listed; i++) if (inline.indexOf(i) === -1) listedNotCited.push(i);
-
-    var html =
-      '<div class="compare">' +
-      '<div class="compare-head">' + C.icon('file-text', 17) +
-      '<b>正文引用与文末清单比对</b>' +
-      '<span>' + C.esc(state.fileName || '上传文档') + ' · 正文引用标记 ' + inline.length + ' 处，文末清单 ' + listed + ' 条</span></div>';
-
-    if (!citedNotListed.length && !listedNotCited.length) {
-      html += '<div class="compare-ok">' + C.icon('check-circle', 15) + '正文引用与文末清单完全一致，未发现「引了没列」或「列了没引」。</div>';
-    } else {
-      html += '<div class="compare-grid">';
-      html += '<div class="compare-col cc-cited"><div class="cc-head">' + C.icon('alert-circle', 14) + '引了没列<span class="tag">' + citedNotListed.length + '</span></div>';
-      html += citedNotListed.length
-        ? citedNotListed.map(function (n) { return '<div class="cc-item"><span class="mk">[' + n + ']</span><span>正文出现该引用标记，但文末参考文献清单中没有对应条目。</span></div>'; }).join('')
-        : '<div class="cc-empty">未发现此类问题</div>';
-      html += '</div>';
-      html += '<div class="compare-col cc-listed"><div class="cc-head">' + C.icon('alert-circle', 14) + '列了没引<span class="tag">' + listedNotCited.length + '</span></div>';
-      html += listedNotCited.length
-        ? listedNotCited.map(function (n) {
-            var it = state.items[n - 1];
-            return '<div class="cc-item"><span class="mk">[' + n + ']</span><span>' + C.esc(it ? it.raw : '') + '</span></div>';
-          }).join('')
-        : '<div class="cc-empty">未发现此类问题</div>';
-      html += '</div></div>';
-    }
-    html += '</div>';
-    box.innerHTML = html;
   }
 
   /* ---------------- 证据面板 ---------------- */
@@ -920,8 +855,6 @@
     if (ui && Array.isArray(ui.open)) {
       state.openPanels = ui.open.filter(function (i) { return typeof i === 'number' && i >= 0 && i < state.items.length; });
     }
-
-    renderDocCompare();
 
     /* 恢复进度与判定：已验条目直接渲染，不重新核验 */
     state.recovered = loadPersisted();

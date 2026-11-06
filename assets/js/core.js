@@ -261,23 +261,6 @@ window.CP_CORE = (function () {
     return entries.map(function (t) { return t.replace(/\s+/g, ' ').trim(); });
   }
 
-  /* ---------------- 正文行内引用标记提取 ---------------- */
-  function extractInlineCitations(bodyText) {
-    var found = {};
-    var re = /\[(\d+(?:\s*[,\-\u2013]\s*\d+)*)\]/g, m;
-    while ((m = re.exec(bodyText))) {
-      m[1].split(/[,\uFF0C]/).forEach(function (part) {
-        part = part.trim();
-        var rng = part.split(/[-\u2013]/);
-        if (rng.length === 2) {
-          var a = +rng[0], b = +rng[1];
-          if (isFinite(a) && isFinite(b)) for (var i = Math.min(a, b); i <= Math.max(a, b); i++) found[i] = 1;
-        } else { var n = +part; if (isFinite(n)) found[n] = 1; }
-      });
-    }
-    return Object.keys(found).map(Number).sort(function (a, b) { return a - b; });
-  }
-
   /* ---------------- 字符串相似度 ---------------- */
   function norm(s) {
     return String(s || '').toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -888,7 +871,7 @@ window.CP_CORE = (function () {
     extractDoi: extractDoi, extractYear: extractYear, extractTitle: extractTitle, extractAuthors: extractAuthors,
     sanitizeQuery: sanitizeQuery,
     formatCheck: formatCheck,
-    splitRefSection: splitRefSection, parseRefEntries: parseRefEntries, extractInlineCitations: extractInlineCitations,
+    splitRefSection: splitRefSection, parseRefEntries: parseRefEntries,
     jaccard: jaccard, norm: norm,
     authorLinked: authorLinked, liveScore: liveScore,
     crossrefSearchUrl: crossrefSearchUrl,

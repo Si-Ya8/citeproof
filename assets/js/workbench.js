@@ -301,13 +301,12 @@
     if (!text || !text.trim()) { showErr('upload-err', '未能从文档中提取到文字内容，请检查文件或改用粘贴方式。'); return; }
     var sp = C.splitRefSection(text);
     var entries = C.parseRefEntries(sp.refs);
-    var inline = C.extractInlineCitations(sp.body);
     if (!entries.length) { showErr('upload-err', '未在文档中找到「参考文献」区块。请确认文末包含「参考文献」或「References」标题，或改用粘贴方式。'); return; }
 
-    parsed = { entries: entries, body: sp.body, inline: inline, fileName: file.name, size: file.size };
+    parsed = { entries: entries, body: sp.body, fileName: file.name, size: file.size };
     document.getElementById('file-name').textContent = file.name;
     document.getElementById('file-meta').textContent =
-      '提取到 ' + entries.length + ' 条参考文献 · 正文引用标记 ' + inline.length + ' 处 · ' + (file.size / 1024).toFixed(0) + ' KB';
+      '提取到 ' + entries.length + ' 条参考文献 · ' + (file.size / 1024).toFixed(0) + ' KB';
     fileCard.classList.add('on');
     C.toast('已提取 ' + entries.length + ' 条参考文献');
   }
@@ -370,10 +369,7 @@
       items: items,
       source: currentTab,
       fileName: parsed ? parsed.fileName : null,
-      doc: parsed ? {
-        inline: parsed.inline,
-        listedCount: parsed.entries.length
-      } : null,
+      doc: parsed ? { listedCount: parsed.entries.length } : null,
       orderId: 'CP-' + new Date().toISOString().slice(0, 10).replace(/-/g, '') + '-' + String(Math.floor(Math.random() * 9000) + 1000),
       startedAt: Date.now()
     };
